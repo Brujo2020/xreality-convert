@@ -2,7 +2,7 @@
 
 A native macOS desktop app for generating images locally with [Ollama](https://ollama.com) — no terminal required. Built with Electron + React, designed for Apple Silicon.
 
-> _Tip: drop a screenshot at `docs/screenshot.png` and reference it here to showcase the UI._
+![Ollama Image Studio — dark UI with prompt panel, generated image, and gallery sidebar](docs/screenshot.png)
 
 ## Features
 
