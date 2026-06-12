@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: #0f0f0f;
+    color: #e5e5e5;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+}
+
+@layer utilities {
+  /* Slim dark scrollbars to match the theme. */
+  .scroll-dark::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scroll-dark::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scroll-dark::-webkit-scrollbar-thumb {
+    background: #2a2a2a;
+    border-radius: 4px;
+  }
+  .scroll-dark::-webkit-scrollbar-thumb:hover {
+    background: #3a3a3a;
+  }
+
+  /* Violet accent slider track + thumb. */
+  .slider-accent {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    border-radius: 9999px;
+    background: #2a2a2a;
+    outline: none;
+  }
+  .slider-accent::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 9999px;
+    background: #7c3aed;
+    cursor: pointer;
+    border: 2px solid #0f0f0f;
+    box-shadow: 0 0 0 1px #7c3aed;
+    transition: background 0.15s ease;
+  }
+  .slider-accent::-webkit-slider-thumb:hover {
+    background: #8b5cf6;
+  }
+}

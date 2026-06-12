@@ -1,0 +1,49 @@
+{
+  "name": "ollama-image-studio",
+  "version": "1.0.0",
+  "description": "Local GUI for generating images via the Ollama API",
+  "author": "Arnaud Soulas",
+  "license": "MIT",
+  "main": "electron/main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n VITE,ELECTRON -c magenta,cyan \"npm:dev:vite\" \"npm:dev:electron\"",
+    "dev:vite": "vite",
+    "dev:electron": "wait-on tcp:5173 && cross-env NODE_ENV=development electron .",
+    "start": "npm run dev",
+    "build:vite": "vite build",
+    "build": "npm run build:vite && electron-builder",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^33.3.1",
+    "electron-builder": "^25.1.8",
+    "postcss": "^8.5.1",
+    "tailwindcss": "^3.4.17",
+    "vite": "^6.0.7",
+    "wait-on": "^8.0.1"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "build": {
+    "appId": "com.ollamaimagestudio.app",
+    "productName": "Ollama Image Studio",
+    "files": [
+      "electron/**/*",
+      "dist/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.graphics-design"
+    }
+  }
+}
