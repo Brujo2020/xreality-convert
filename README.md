@@ -91,6 +91,25 @@ Prérequis : Mac Apple Silicon (32 Go recommandés), Python 3.11, ~14 Go de poid
 
 > Sans ce serveur, les modes **Image** et **STL** fonctionnent normalement ; seul **Img→3D** est désactivé.
 
+### Conseils d'image pour de bons résultats (Img→3D)
+
+Le pipeline **ne supprime pas le fond** automatiquement : la qualité du modèle 3D
+dépend directement d'une image d'entrée propre. Privilégie un **PNG à fond
+transparent** (objet détouré) — l'app le compose sur fond blanc tout seul.
+
+| Critère | Recommandation |
+|---|---|
+| **Format** | **PNG fond transparent** (idéal) ; sinon PNG/JPG **fond blanc pur et uni** |
+| **Sujet** | un **seul objet**, bien contrasté avec le fond |
+| **Cadrage** | objet **centré**, remplissant ~80–90 % de l'image, **non coupé** aux bords |
+| **Ratio** | **proche du carré** (un format très allongé ⇒ objet plus petit ⇒ moins de détail) |
+| **Vue** | **vue de face claire** (le modèle déduit le dos à partir de cette vue) |
+| **Lumière** | **uniforme**, éviter les ombres dures (elles deviennent du relief) |
+| **Résolution** | ~1024 px suffit (l'encodeur redimensionne de toute façon) |
+
+À éviter : fonds chargés/réels, ombres portées, faible contraste objet/fond,
+JPG très compressé (artefacts sur les contours).
+
 ## Architecture
 
 ```
