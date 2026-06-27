@@ -1,76 +1,92 @@
 # Ollama Image Studio
 
-A native macOS desktop app for generating images locally with [Ollama](https://ollama.com) — no terminal required. Built with Electron + React, designed for Apple Silicon.
+Application native macOS pour générer **des images** et **des modèles 3D (STL)** en local avec [Ollama](https://ollama.com) — sans passer par le terminal. Construite avec Electron + React, pensée pour Apple Silicon.
 
-![Ollama Image Studio — dark UI with prompt panel, generated image, and gallery sidebar](docs/screenshot.png)
+![Ollama Image Studio — génération d'image](docs/screenshot.png)
 
-## Features
+![Ollama Image Studio — module STL 3D](docs/screenshot-stl.png)
 
-- 🔌 **Auto connection check** — detects whether Ollama is running on `localhost:11434` and lists your installed image models (`z-image`, `flux`, …).
-- 🎨 **Full generation UI** — model picker, multiline prompt, and collapsible advanced controls: width/height (512–2048), steps, and seed with a 🎲 random button.
-- 🖼️ **Result viewer** — large preview plus metadata (model, seed, size, steps, generation time).
-- 💾 **Save & copy** — one-click save to `~/Pictures/OllamaImageStudio/` with timestamped filenames, plus copy-prompt and reveal-in-Finder.
-- 🗂️ **Gallery** — your 20 most recent generations as thumbnails; click one to reload its parameters into the form. Metadata persists to disk.
-- ⏹️ **Cancellable** — abort an in-flight generation at any time.
-- 🌙 **Dark theme**, native macOS title bar.
+## Fonctionnalités
 
-## Requirements
+L'app a **deux modes**, sélectionnables en haut du panneau :
 
-- macOS (Apple Silicon recommended)
-- [Ollama](https://ollama.com) installed and running: `ollama serve`
-- An image-capable model, e.g.:
-  ```bash
-  ollama pull x/z-image-turbo
-  ```
-- Node.js 18+ (for building from source)
+### 🖼️ Mode Image
+- Génération d'images via le modèle `x/z-image-turbo` (affiché **en rouge** avec la commande d'installation s'il n'est pas présent).
+- Paramètres : largeur / hauteur (512–2048), nombre d'étapes, *seed* (+ bouton aléatoire 🎲).
+- Sauvegarde dans `~/Pictures/OllamaImageStudio/`.
 
-> **Note:** Image generation via Ollama's `/api/generate` is an experimental endpoint. It requires an Ollama build that supports image output for the selected model.
+### 🧊 Mode STL 3D
+- Choix libre du modèle de **code** parmi ceux installés localement.
+- Pipeline : *prompt → le modèle écrit du code [JSCAD](https://github.com/jscad/OpenJSCAD.org) → compilation en STL dans l'app → rendu 3D*.
+- **Visualiseur 3D interactif** (rotation à la souris, zoom à la molette) via Three.js.
+- Bouton **« View code »** pour inspecter le code JSCAD généré.
+- Sauvegarde du `.stl` dans `~/Documents/OllamaImageStudio/`.
+- Robustesse : *system prompt* détaillé + couche de compatibilité tolérante + **auto-réparation** (si le code échoue, l'erreur est renvoyée au modèle pour correction, jusqu'à 3 essais).
 
-## Run from source
+### Commun aux deux modes
+- ✅ Vérification automatique de la connexion à Ollama + détection des modèles.
+- 🗂️ Galerie des 20 dernières générations (clic = recharge les paramètres). Métadonnées persistées sur disque.
+- ⏹️ Génération annulable à tout moment.
+- 📋 Copier le prompt, 📂 révéler le fichier dans le Finder.
+- 🌙 Thème sombre, barre de titre macOS native.
+
+## Prérequis
+
+- macOS (Apple Silicon recommandé)
+- [Ollama](https://ollama.com) installé et lancé : `ollama serve`
+- **Pour les images** : `ollama pull x/z-image-turbo`
+- **Pour le STL** : un modèle de code. Recommandé pour la meilleure qualité :
+  un modèle *cloud* comme `gpt-oss:120b-cloud` ; en local, `qwen2.5-coder` fonctionne aussi.
+- Node.js 18+ (pour compiler depuis les sources)
+
+> **Note** : la génération d'image via `/api/generate` d'Ollama est un point d'API expérimental.
+> Pour le STL, la qualité dépend fortement du modèle de code choisi : les modèles plus
+> puissants produisent des formes nettement plus détaillées.
+
+## Lancer depuis les sources
 
 ```bash
-git clone https://github.com/<your-username>/ollama-image-studio.git
+git clone https://github.com/koua29/ollama-image-studio.git
 cd ollama-image-studio
 npm install
-npm run dev      # launches Vite + Electron in development mode
+npm run dev      # lance Vite + Electron en mode développement
 ```
 
-## Build a distributable app
+## Construire une app distribuable
 
 ```bash
-npm run build    # produces a .app and .dmg in release/
+npm run build    # produit un .app et un .dmg dans release/
 ```
 
-Then drag **Ollama Image Studio.app** into your `/Applications` folder, or open the generated `.dmg`.
+Glissez ensuite **Ollama Image Studio.app** dans votre dossier `/Applications`, ou ouvrez le `.dmg`.
 
 ## Architecture
 
 ```
 ollama-image-studio/
 ├── electron/
-│   ├── main.js       # Electron main process: IPC handlers + HTTP calls to Ollama
-│   └── preload.js    # contextBridge — exposes a safe `window.ollama` API
+│   ├── main.js       # processus principal : IPC, appels HTTP Ollama, pipeline JSCAD→STL
+│   └── preload.js    # contextBridge — expose une API sûre window.ollama
 └── src/
-    ├── App.jsx       # state container
-    └── components/   # Header, PromptPanel, ImageViewer, Gallery
+    ├── App.jsx       # état de l'application
+    └── components/   # Header, PromptPanel, ImageViewer, StlViewer, Gallery
 ```
 
-**Design notes**
+**Choix techniques**
 
-- All Ollama HTTP calls happen in the **main process** (Node's built-in `http`, zero runtime deps) — this avoids CORS entirely and keeps the renderer sandboxed.
-- Security: `nodeIntegration: false`, `contextIsolation: true`, `sandbox: true`, plus a strict Content-Security-Policy.
-- Generation is cancellable via an `AbortController` wired through IPC.
+- Tous les appels HTTP à Ollama se font dans le **processus principal** (module `http` de Node, zéro dépendance) — pas de problème de CORS et le *renderer* reste isolé.
+- Le code JSCAD généré par le modèle est exécuté dans un **bac à sable `vm` verrouillé** (pas d'accès fichier/réseau, exécution bornée dans le temps), puis sérialisé en STL.
+- Sécurité : `nodeIntegration: false`, `contextIsolation: true`, `sandbox: true`, plus une Content-Security-Policy stricte.
 
-### IPC surface (`window.ollama`)
+## ☕ Offrez-moi un café
 
-| Method | Returns |
-| --- | --- |
-| `checkStatus()` | `{ connected, models[] }` |
-| `generate(params)` | `{ ok, image, duration }` |
-| `cancel()` | aborts the active generation |
-| `saveImage(base64, filename)` | absolute file path |
-| `loadHistory()` / `saveHistory(history)` | gallery persistence |
+Cette application est gratuite et open source. Si elle vous est utile, vous pouvez me remercier
+en m'offrant un café — il suffit de scanner ce QR code PayPal. Merci beaucoup ! 🙏
 
-## License
+<p align="center">
+  <img src="docs/paypal-qr.png" alt="QR code PayPal pour offrir un café" width="220" />
+</p>
+
+## Licence
 
 [MIT](LICENSE) © 2026 Arnaud Soulas

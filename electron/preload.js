@@ -10,6 +10,17 @@ contextBridge.exposeInMainWorld('ollama', {
   // -> { ok: true, image: base64, duration: number } | { ok: false, error, cancelled? }
   generate: (params) => ipcRenderer.invoke('ollama:generate', params),
 
+  // params: { model, prompt, seed }
+  // -> { ok: true, stl, code, duration, triangles, stlPath } | { ok: false, error, code?, cancelled? }
+  generateStl: (params) => ipcRenderer.invoke('ollama:generateStl', params),
+
+  // Read a cached/saved STL file back (for gallery re-display).
+  readStl: (filePath) => ipcRenderer.invoke('ollama:readStl', filePath),
+
+  // -> absolute file path of the saved STL
+  saveStl: (data, filename) =>
+    ipcRenderer.invoke('ollama:saveStl', { data, filename }),
+
   // Abort the in-flight generation.
   cancel: () => ipcRenderer.invoke('ollama:cancel'),
 

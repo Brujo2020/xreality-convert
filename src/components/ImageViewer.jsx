@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import StlViewer from './StlViewer.jsx';
 
 function Meta({ label, value }) {
   return (
@@ -14,24 +15,29 @@ function Meta({ label, value }) {
 export default function ImageViewer({
   result,
   generating,
+  mode,
   error,
   onSave,
   onCopyPrompt,
   onReveal,
 }) {
+  const isStl = result?.type === 'stl';
   const [saveLabel, setSaveLabel] = useState('💾 Save');
   const [copyLabel, setCopyLabel] = useState('📋 Copy prompt');
+  const [showCode, setShowCode] = useState(false);
 
-  // Reset transient button labels whenever the shown image changes.
+  const defaultSaveLabel = isStl ? '💾 Save STL' : '💾 Save';
+
   useEffect(() => {
-    setSaveLabel(result?.filePath ? '✓ Saved' : '💾 Save');
+    setSaveLabel(result?.filePath ? '✓ Saved' : defaultSaveLabel);
     setCopyLabel('📋 Copy prompt');
-  }, [result?.id, result?.filePath]);
+    setShowCode(false);
+  }, [result?.id, result?.filePath, defaultSaveLabel]);
 
   const handleSave = async () => {
     setSaveLabel('Saving…');
     const path = await onSave();
-    setSaveLabel(path ? '✓ Saved' : '💾 Save');
+    setSaveLabel(path ? '✓ Saved' : defaultSaveLabel);
   };
 
   const handleCopy = async () => {
@@ -42,7 +48,6 @@ export default function ImageViewer({
     }
   };
 
-  // --- States: error / generating / empty / image ---
   const renderBody = () => {
     if (error) {
       return (
@@ -57,7 +62,9 @@ export default function ImageViewer({
       return (
         <div className="flex flex-col items-center gap-4 text-center">
           <span className="h-10 w-10 animate-spin rounded-full border-[3px] border-accent/30 border-t-accent" />
-          <p className="text-sm text-neutral-400">Generating…</p>
+          <p className="text-sm text-neutral-400">
+            {mode === 'stl' ? 'Generating 3D model…' : 'Generating…'}
+          </p>
         </div>
       );
     }
@@ -65,20 +72,32 @@ export default function ImageViewer({
     if (!result) {
       return (
         <div className="flex flex-col items-center gap-2 text-center text-neutral-600">
-          <div className="text-4xl">🖼️</div>
-          <p className="text-sm">Your generated image will appear here.</p>
+          <div className="text-4xl">{mode === 'stl' ? '🧊' : '🖼️'}</div>
+          <p className="text-sm">
+            {mode === 'stl'
+              ? 'Your generated 3D model will appear here.'
+              : 'Your generated image will appear here.'}
+          </p>
         </div>
       );
     }
 
     return (
       <div className="flex h-full w-full flex-col items-center gap-4">
-        <div className="flex min-h-0 flex-1 items-center justify-center">
-          <img
-            src={`data:image/png;base64,${result.image}`}
-            alt={result.prompt}
-            className="max-h-full max-w-full rounded-xl border border-border object-contain shadow-2xl"
-          />
+        <div className="flex min-h-0 flex-1 items-stretch justify-center self-stretch">
+          {isStl ? (
+            <div className="h-full w-full overflow-hidden rounded-xl border border-border shadow-2xl">
+              <StlViewer stl={result.stl} />
+            </div>
+          ) : (
+            <div className="flex w-full items-center justify-center">
+              <img
+                src={`data:image/png;base64,${result.image}`}
+                alt={result.prompt}
+                className="max-h-full max-w-full rounded-xl border border-border object-contain shadow-2xl"
+              />
+            </div>
+          )}
         </div>
 
         {/* Metadata + actions */}
@@ -86,17 +105,16 @@ export default function ImageViewer({
           <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
             <Meta label="Model" value={result.model} />
             <Meta label="Seed" value={result.seed} />
-            <Meta
-              label="Size"
-              value={`${result.width}×${result.height}`}
-            />
-            <Meta label="Steps" value={result.steps} />
+            {isStl ? (
+              <Meta label="Triangles" value={result.triangles ?? '—'} />
+            ) : (
+              <Meta label="Size" value={`${result.width}×${result.height}`} />
+            )}
+            {!isStl && <Meta label="Steps" value={result.steps} />}
             <Meta
               label="Time"
               value={
-                result.duration != null
-                  ? `${result.duration.toFixed(1)}s`
-                  : '—'
+                result.duration != null ? `${result.duration.toFixed(1)}s` : '—'
               }
             />
           </div>
@@ -118,6 +136,14 @@ export default function ImageViewer({
             >
               {copyLabel}
             </button>
+            {isStl && result.code && (
+              <button
+                onClick={() => setShowCode((s) => !s)}
+                className="rounded-lg border border-border bg-elevated px-3 py-1.5 text-xs font-medium text-neutral-200 transition hover:border-neutral-600"
+              >
+                {showCode ? '🙈 Hide code' : '🧩 View code'}
+              </button>
+            )}
             {result.filePath && (
               <button
                 onClick={() => onReveal(result.filePath)}
@@ -127,6 +153,12 @@ export default function ImageViewer({
               </button>
             )}
           </div>
+
+          {isStl && showCode && (
+            <pre className="scroll-dark mt-3 max-h-48 overflow-auto rounded-lg border border-border bg-black/40 p-3 text-[11px] leading-relaxed text-neutral-300">
+              <code>{result.code}</code>
+            </pre>
+          )}
         </div>
       </div>
     );

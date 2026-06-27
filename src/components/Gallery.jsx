@@ -30,12 +30,22 @@ export default function Gallery({ history, activeId, onSelect }) {
                     : 'border-border hover:border-neutral-600'
                 }`}
               >
-                <img
-                  src={`data:image/png;base64,${item.image}`}
-                  alt={item.prompt}
-                  className="h-full w-full object-cover"
-                  loading="lazy"
-                />
+                {item.type === 'stl' ? (
+                  // STL meshes aren't stored inline — show a 3D placeholder tile.
+                  <div className="flex h-full w-full flex-col items-center justify-center bg-elevated text-neutral-400">
+                    <span className="text-2xl">🧊</span>
+                    <span className="mt-0.5 text-[8px] uppercase tracking-wide">
+                      STL
+                    </span>
+                  </div>
+                ) : (
+                  <img
+                    src={`data:image/png;base64,${item.image}`}
+                    alt={item.prompt}
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                )}
                 <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-1.5 py-1 text-left text-[9px] leading-tight text-neutral-300 opacity-0 transition group-hover:opacity-100">
                   seed {item.seed}
                 </span>
