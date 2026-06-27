@@ -30,12 +30,12 @@ export default function Gallery({ history, activeId, onSelect }) {
                     : 'border-border hover:border-neutral-600'
                 }`}
               >
-                {item.type === 'stl' ? (
-                  // STL meshes aren't stored inline — show a 3D placeholder tile.
+                {item.type === 'stl' || item.type === 'glb' ? (
+                  // 3D meshes aren't stored inline — show a placeholder tile.
                   <div className="flex h-full w-full flex-col items-center justify-center bg-elevated text-neutral-400">
-                    <span className="text-2xl">🧊</span>
+                    <span className="text-2xl">{item.type === 'glb' ? '🗿' : '🧊'}</span>
                     <span className="mt-0.5 text-[8px] uppercase tracking-wide">
-                      STL
+                      {item.type === 'glb' ? '3D' : 'STL'}
                     </span>
                   </div>
                 ) : (

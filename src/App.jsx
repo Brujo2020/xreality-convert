@@ -55,6 +55,13 @@ export default function App() {
     seed: randomSeed(),
   });
 
+  // --- Image -> 3D (Hunyuan, via local Python server) ---
+  const [image3dInput, setImage3dInput] = useState(null); // { dataUrl, base64, name }
+  const [steps3d, setSteps3d] = useState(30);
+  const [stlMm, setStlMm] = useState(60); // target longest-axis size for STL export
+  const [texture3d, setTexture3d] = useState(false); // Stage 2 PBR texture
+  const [hunyuanUp, setHunyuanUp] = useState(false);
+
   // --- Generation state ---
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState(null);
@@ -96,6 +103,21 @@ export default function App() {
     return () => clearInterval(id);
   }, [checkStatus]);
 
+  // Poll the local 3D server's health (only meaningful in image3d mode).
+  useEffect(() => {
+    let active = true;
+    const ping = async () => {
+      const r = await window.hunyuan.health();
+      if (active) setHunyuanUp(!!r.up);
+    };
+    ping();
+    const id = setInterval(ping, 5000);
+    return () => {
+      active = false;
+      clearInterval(id);
+    };
+  }, []);
+
   // --- Load persisted history on mount --------------------------------------
   useEffect(() => {
     window.ollama.loadHistory().then((items) => {
@@ -110,6 +132,46 @@ export default function App() {
 
   // --- Generate (branches on mode) ------------------------------------------
   const handleGenerate = useCallback(async () => {
+    // --- Image -> 3D mode (Hunyuan, no prompt) ---
+    if (mode === 'image3d') {
+      if (!image3dInput) {
+        setError('Choisis une image source.');
+        return;
+      }
+      setError(null);
+      setGenerating(true);
+      const res = await window.hunyuan.generate3D({
+        imageBase64: image3dInput.base64,
+        steps: steps3d,
+        octree: 256,
+        texture: texture3d,
+      });
+      setGenerating(false);
+      if (!res.ok) {
+        if (!res.cancelled) setError(res.error || 'Génération 3D échouée.');
+        return;
+      }
+      const entry = {
+        id: `${Date.now()}-3d`,
+        type: 'glb',
+        glbBase64: res.glbBase64,
+        glbPath: res.glbPath,
+        faces: res.faces,
+        duration: res.duration,
+        steps: steps3d,
+        textured: texture3d,
+        prompt: image3dInput.name, // shown as the label
+        inputDataUrl: image3dInput.dataUrl,
+        model: 'hunyuan3d-2.1-mlx',
+        createdAt: Date.now(),
+        filePath: null,
+      };
+      setResult(entry);
+      const { glbBase64, inputDataUrl, ...light } = entry;
+      persistHistory([light, ...history].slice(0, MAX_HISTORY));
+      return;
+    }
+
     if (!prompt.trim()) {
       setError('Please enter a prompt.');
       return;
@@ -187,17 +249,34 @@ export default function App() {
     // Store everything except the heavy inline STL text.
     const { stl, ...lightEntry } = entry;
     persistHistory([lightEntry, ...history].slice(0, MAX_HISTORY));
-  }, [prompt, mode, params, stlModel, history, persistHistory]);
+  }, [
+    prompt,
+    mode,
+    params,
+    stlModel,
+    image3dInput,
+    steps3d,
+    texture3d,
+    history,
+    persistHistory,
+  ]);
 
   const handleCancel = useCallback(() => {
-    window.ollama.cancel();
-  }, []);
+    if (mode === 'image3d') window.hunyuan.cancel3D();
+    else window.ollama.cancel();
+  }, [mode]);
 
   // --- Save (branches on type) ----------------------------------------------
   const handleSave = useCallback(async () => {
     if (!result) return null;
     let filePath;
-    if (result.type === 'stl') {
+    if (result.type === 'glb') {
+      filePath = await window.hunyuan.saveGlb({
+        srcPath: result.glbPath,
+        base64: result.glbBase64,
+        filename: timestampName(result.faces || 'model', 'glb'),
+      });
+    } else if (result.type === 'stl') {
       const data = result.stl || (await window.ollama.readStl(result.stlPath));
       if (!data) return null;
       filePath = await window.ollama.saveStl(data, timestampName(result.seed, 'stl'));
@@ -215,6 +294,25 @@ export default function App() {
     return filePath;
   }, [result, history, persistHistory]);
 
+  // For a glb (Hunyuan) result: convert to a printable STL (server-side scale
+  // to 60mm) then save it to ~/Documents/OllamaImageStudio/.
+  const handleSaveStl3d = useCallback(async () => {
+    if (!result || result.type !== 'glb') return null;
+    const conv = await window.hunyuan.convertStl({
+      glbPath: result.glbPath,
+      targetMm: stlMm,
+    });
+    if (!conv.ok) {
+      setError(conv.error || 'Conversion STL échouée.');
+      return null;
+    }
+    const dest = await window.hunyuan.saveGlb({
+      srcPath: conv.stl_path,
+      filename: timestampName(result.faces || 'model', 'stl'),
+    });
+    return { path: dest, dims: conv.dims_mm };
+  }, [result, stlMm]);
+
   const handleCopyPrompt = useCallback(async () => {
     if (result?.prompt) {
       await navigator.clipboard.writeText(result.prompt);
@@ -226,6 +324,13 @@ export default function App() {
   // --- Gallery selection: show item + reload its params ----------------------
   const handleSelectFromGallery = useCallback(async (entry) => {
     setError(null);
+    if (entry.type === 'glb') {
+      setMode('image3d');
+      const glbBase64 =
+        entry.glbBase64 || (await window.hunyuan.readGlb(entry.glbPath));
+      setResult({ ...entry, glbBase64 });
+      return;
+    }
     setPrompt(entry.prompt);
     setMode(entry.type === 'stl' ? 'stl' : 'image');
     if (entry.type === 'stl') {
@@ -242,6 +347,11 @@ export default function App() {
       });
       setResult(entry);
     }
+  }, []);
+
+  const handlePickImage = useCallback(async () => {
+    const img = await window.hunyuan.pickImage();
+    if (img) setImage3dInput(img);
   }, []);
 
   return (
@@ -264,6 +374,15 @@ export default function App() {
             setPrompt={setPrompt}
             params={params}
             setParams={setParams}
+            image3dInput={image3dInput}
+            onPickImage={handlePickImage}
+            steps3d={steps3d}
+            setSteps3d={setSteps3d}
+            stlMm={stlMm}
+            setStlMm={setStlMm}
+            texture3d={texture3d}
+            setTexture3d={setTexture3d}
+            hunyuanUp={hunyuanUp}
             generating={generating}
             onGenerate={handleGenerate}
             onCancel={handleCancel}
@@ -279,6 +398,7 @@ export default function App() {
             mode={mode}
             error={error}
             onSave={handleSave}
+            onSaveStl={handleSaveStl3d}
             onCopyPrompt={handleCopyPrompt}
             onReveal={(p) => window.ollama.revealInFinder(p)}
           />

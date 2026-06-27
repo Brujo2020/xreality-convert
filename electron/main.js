@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
@@ -539,6 +539,181 @@ ipcMain.handle('ollama:saveHistory', async (_event, history) => {
   const trimmed = Array.isArray(history) ? history.slice(0, 50) : [];
   await fsp.writeFile(HISTORY_FILE, JSON.stringify(trimmed, null, 2));
   return true;
+});
+
+// --- Hunyuan3D (image -> 3D mesh) via local FastAPI server -----------------
+const HUNYUAN_PORT = 8765;
+
+function hunyuanRequest({ method, pathName, body, timeout }) {
+  return new Promise((resolve, reject) => {
+    const payload = body ? JSON.stringify(body) : null;
+    const req = http.request(
+      {
+        host: '127.0.0.1',
+        port: HUNYUAN_PORT,
+        path: pathName,
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}),
+        },
+      },
+      (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () =>
+          resolve({
+            statusCode: res.statusCode,
+            body: Buffer.concat(chunks).toString('utf8'),
+          })
+        );
+      }
+    );
+    if (timeout) req.setTimeout(timeout, () => req.destroy(new Error('TIMEOUT')));
+    req.on('error', reject);
+    if (payload) req.write(payload);
+    req.end();
+  });
+}
+
+ipcMain.handle('hunyuan:health', async () => {
+  try {
+    const r = await hunyuanRequest({
+      method: 'GET',
+      pathName: '/health',
+      timeout: 2000,
+    });
+    if (r.statusCode !== 200) return { up: false };
+    return { up: true, ...JSON.parse(r.body) };
+  } catch {
+    return { up: false };
+  }
+});
+
+let hunyuanCancelled = false;
+ipcMain.handle('hunyuan:cancel3D', async () => {
+  hunyuanCancelled = true;
+  return { ok: true };
+});
+
+// Pick an input image via a native dialog; returns it as a data URL + base64.
+ipcMain.handle('hunyuan:pickImage', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+  });
+  if (canceled || !filePaths[0]) return null;
+  const buf = await fsp.readFile(filePaths[0]);
+  const ext = path.extname(filePaths[0]).slice(1).toLowerCase();
+  const mime = ext === 'jpg' ? 'jpeg' : ext;
+  const base64 = buf.toString('base64');
+  return {
+    name: path.basename(filePaths[0]),
+    dataUrl: `data:image/${mime};base64,${base64}`,
+    base64,
+  };
+});
+
+// Start a job and poll until done. The mesh build is long (~9 min), so we poll
+// the server's job status rather than holding one giant request.
+ipcMain.handle('hunyuan:generate3D', async (_event, params) => {
+  const { imageBase64, steps, octree, texture, mock } = params;
+  hunyuanCancelled = false;
+  try {
+    const startRes = await hunyuanRequest({
+      method: 'POST',
+      pathName: '/generate',
+      timeout: 30000,
+      body: {
+        image_base64: imageBase64,
+        steps: steps || 30,
+        octree_resolution: octree || 256,
+        texture: !!texture,
+        mock: !!mock,
+      },
+    });
+    if (startRes.statusCode !== 200) {
+      return { ok: false, error: `Serveur 3D: HTTP ${startRes.statusCode}` };
+    }
+    const { job_id } = JSON.parse(startRes.body);
+
+    // Poll loop.
+    for (;;) {
+      if (hunyuanCancelled) return { ok: false, cancelled: true };
+      await new Promise((r) => setTimeout(r, 2000));
+      const s = await hunyuanRequest({
+        method: 'GET',
+        pathName: `/status/${job_id}`,
+        timeout: 10000,
+      });
+      const js = JSON.parse(s.body);
+      if (js.status === 'done') {
+        const buf = await fsp.readFile(js.glb_path);
+        return {
+          ok: true,
+          glbBase64: buf.toString('base64'),
+          glbPath: js.glb_path,
+          faces: js.faces,
+          duration: js.elapsed,
+        };
+      }
+      if (js.status === 'error') {
+        return { ok: false, error: js.error || 'Génération 3D échouée.' };
+      }
+      if (js.status === 'unknown') {
+        return { ok: false, error: 'Job 3D introuvable.' };
+      }
+      // queued / running -> keep polling
+    }
+  } catch (err) {
+    if (err.code === 'ECONNREFUSED') {
+      return {
+        ok: false,
+        error:
+          'Serveur 3D non démarré. Lance-le : cd hunyuan3d-mlx && ./venv/bin/python server.py',
+      };
+    }
+    return { ok: false, error: err.message };
+  }
+});
+
+// Convert a generated GLB into a printable STL (scaled to target_mm).
+ipcMain.handle('hunyuan:convertStl', async (_event, { glbPath, targetMm }) => {
+  try {
+    const r = await hunyuanRequest({
+      method: 'POST',
+      pathName: '/to-stl',
+      timeout: 60000,
+      body: { glb_path: glbPath, target_mm: targetMm || 60 },
+    });
+    if (r.statusCode !== 200) return { ok: false, error: `HTTP ${r.statusCode}` };
+    return JSON.parse(r.body);
+  } catch (err) {
+    if (err.code === 'ECONNREFUSED') {
+      return { ok: false, error: 'Serveur 3D non démarré.' };
+    }
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('hunyuan:readGlb', async (_event, filePath) => {
+  try {
+    const buf = await fsp.readFile(filePath);
+    return buf.toString('base64');
+  } catch {
+    return null;
+  }
+});
+
+ipcMain.handle('hunyuan:saveGlb', async (_event, { srcPath, base64, filename }) => {
+  ensureDir(STL_SAVE_DIR); // ~/Documents/OllamaImageStudio
+  const dest = path.join(STL_SAVE_DIR, filename);
+  if (srcPath && fs.existsSync(srcPath)) {
+    await fsp.copyFile(srcPath, dest);
+  } else {
+    await fsp.writeFile(dest, Buffer.from(base64, 'base64'));
+  }
+  return dest;
 });
 
 // --- Window ----------------------------------------------------------------

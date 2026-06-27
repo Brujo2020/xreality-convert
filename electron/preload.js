@@ -38,3 +38,27 @@ contextBridge.exposeInMainWorld('ollama', {
   // Persist the full history array.
   saveHistory: (history) => ipcRenderer.invoke('ollama:saveHistory', history),
 });
+
+// Hunyuan3D image->3D mesh, served by the local Python (MLX) FastAPI server.
+contextBridge.exposeInMainWorld('hunyuan', {
+  // -> { up: boolean, model_loaded?: boolean }
+  health: () => ipcRenderer.invoke('hunyuan:health'),
+
+  // params: { imageBase64, steps, octree, mock }
+  // -> { ok, glbBase64, glbPath, faces, duration } | { ok:false, error, cancelled? }
+  generate3D: (params) => ipcRenderer.invoke('hunyuan:generate3D', params),
+
+  cancel3D: () => ipcRenderer.invoke('hunyuan:cancel3D'),
+
+  // Native image picker -> { name, dataUrl, base64 } | null
+  pickImage: () => ipcRenderer.invoke('hunyuan:pickImage'),
+
+  // Convert a generated GLB to a printable STL -> { ok, stl_path, dims_mm, watertight }
+  convertStl: (args) => ipcRenderer.invoke('hunyuan:convertStl', args),
+
+  // Read a cached/saved GLB back as base64 (for gallery re-display).
+  readGlb: (filePath) => ipcRenderer.invoke('hunyuan:readGlb', filePath),
+
+  // Save a GLB to ~/Documents/OllamaImageStudio/
+  saveGlb: (args) => ipcRenderer.invoke('hunyuan:saveGlb', args),
+});

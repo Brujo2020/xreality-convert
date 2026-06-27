@@ -1,6 +1,6 @@
 # Ollama Image Studio
 
-Application native macOS pour générer **des images** et **des modèles 3D (STL)** en local avec [Ollama](https://ollama.com) — sans passer par le terminal. Construite avec Electron + React, pensée pour Apple Silicon.
+Application native macOS pour générer, en local, **des images**, **des modèles 3D (STL)** à partir d'un prompt, et **des modèles 3D à partir d'une photo** — sans passer par le terminal. Construite avec Electron + React, pensée pour Apple Silicon.
 
 ![Ollama Image Studio — génération d'image](docs/screenshot.png)
 
@@ -8,7 +8,7 @@ Application native macOS pour générer **des images** et **des modèles 3D (STL
 
 ## Fonctionnalités
 
-L'app a **deux modes**, sélectionnables en haut du panneau :
+L'app a **trois modes**, sélectionnables en haut du panneau :
 
 ### 🖼️ Mode Image
 - Génération d'images via le modèle `x/z-image-turbo` (affiché **en rouge** avec la commande d'installation s'il n'est pas présent).
@@ -23,7 +23,14 @@ L'app a **deux modes**, sélectionnables en haut du panneau :
 - Sauvegarde du `.stl` dans `~/Documents/OllamaImageStudio/`.
 - Robustesse : *system prompt* détaillé + couche de compatibilité tolérante + **auto-réparation** (si le code échoue, l'erreur est renvoyée au modèle pour correction, jusqu'à 3 essais).
 
-### Commun aux deux modes
+### 🗿 Mode Image → 3D (Hunyuan3D, avancé)
+- Transforme **une image** (photo ou image générée) en **modèle 3D** via [Hunyuan3D 2.1](https://github.com/Tencent-Hunyuan/Hunyuan3D-2.1) tournant **en local sur Apple Silicon** (MLX).
+- Choix du nombre d'étapes, **taille STL configurable (mm)** pour l'impression, et **texture couleur (PBR)** optionnelle.
+- Visualiseur 3D, export **GLB** (avec couleur) et **STL** (pour l'impression 3D, mis à l'échelle).
+- ⚙️ **Nécessite un serveur local séparé** (voir [Mode Image → 3D : installation](#mode-image--3d--installation-serveur-local)). Sans lui, le mode affiche « serveur off ».
+- ⏱️ ~9 min pour la forme, ~9 min de plus avec la texture (sur M2 Pro).
+
+### Commun à tous les modes
 - ✅ Vérification automatique de la connexion à Ollama + détection des modèles.
 - 🗂️ Galerie des 20 dernières générations (clic = recharge les paramètres). Métadonnées persistées sur disque.
 - ⏹️ Génération annulable à tout moment.
@@ -59,6 +66,22 @@ npm run build    # produit un .app et un .dmg dans release/
 ```
 
 Glissez ensuite **Ollama Image Studio.app** dans votre dossier `/Applications`, ou ouvrez le `.dmg`.
+
+## Mode Image → 3D : installation (serveur local)
+
+Le mode **Img→3D** s'appuie sur Hunyuan3D 2.1 (port MLX), qui tourne dans un **petit serveur Python séparé** (l'app le contacte sur `http://127.0.0.1:8765`). C'est une fonctionnalité **avancée**, distincte du cœur de l'app.
+
+Prérequis : Mac Apple Silicon (32 Go recommandés), Python 3.11, ~14 Go de poids de modèle.
+
+1. Récupère le pipeline MLX et les poids ([dgrauet/Hunyuan3D-2.1-mlx](https://github.com/dgrauet/Hunyuan3D-2.1-mlx), poids sur [Hugging Face](https://huggingface.co/dgrauet/hunyuan3d-2.1-mlx)).
+2. Crée un venv et installe les dépendances (`requirements-mlx.txt`).
+3. Lance le serveur — un script double-cliquable est fourni :
+   ```
+   ./start-3d-server.command
+   ```
+   Garde la fenêtre ouverte ; le badge passe à « serveur OK » dans l'app.
+
+> Sans ce serveur, les modes **Image** et **STL** fonctionnent normalement ; seul **Img→3D** est désactivé.
 
 ## Architecture
 
