@@ -6,6 +6,8 @@ Application native macOS pour générer, en local, **des images**, **des modèle
 
 ![Ollama Image Studio — module STL 3D](docs/screenshot-stl.png)
 
+![Ollama Image Studio — module Image → 3D (Hunyuan3D)](docs/screenshot-3d.png)
+
 ## Fonctionnalités
 
 L'app a **trois modes**, sélectionnables en haut du panneau :
