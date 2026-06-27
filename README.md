@@ -75,11 +75,17 @@ Prérequis : Mac Apple Silicon (32 Go recommandés), Python 3.11, ~14 Go de poid
 
 1. Récupère le pipeline MLX et les poids ([dgrauet/Hunyuan3D-2.1-mlx](https://github.com/dgrauet/Hunyuan3D-2.1-mlx), poids sur [Hugging Face](https://huggingface.co/dgrauet/hunyuan3d-2.1-mlx)).
 2. Crée un venv et installe les dépendances (`requirements-mlx.txt`).
-3. Lance le serveur — un script double-cliquable est fourni :
+3. Lance le serveur. **L'app installée le démarre automatiquement à son ouverture**
+   (et l'arrête à la fermeture) dès lors que le dossier `hunyuan3d-mlx` et son venv
+   existent à l'emplacement attendu — rien à faire. En secours / hors app, un script
+   double-cliquable est fourni :
    ```
    ./start-3d-server.command
    ```
-   Garde la fenêtre ouverte ; le badge passe à « serveur OK » dans l'app.
+   Le badge passe à « serveur OK » dans l'app.
+
+> Emplacement attendu par l'auto-démarrage : `~/Documents/Claude/Projects/hunyuan3d-mlx`
+> (surchargeable via la variable d'environnement `OIS_3D_SERVER_DIR`).
 
 > Sans ce serveur, les modes **Image** et **STL** fonctionnent normalement ; seul **Img→3D** est désactivé.
 

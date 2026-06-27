@@ -5,6 +5,7 @@ const fsp = require('node:fs/promises');
 const os = require('node:os');
 const http = require('node:http');
 const vm = require('node:vm');
+const { spawn } = require('node:child_process');
 const jscadModeling = require('@jscad/modeling');
 const stlSerializer = require('@jscad/stl-serializer');
 
@@ -576,6 +577,74 @@ function hunyuanRequest({ method, pathName, body, timeout }) {
   });
 }
 
+// Auto-start the local 3D server when the app launches, so the Img→3D mode
+// works without the user manually running it. We only manage (and later kill)
+// the process if WE started it — a server the user launched by hand is left
+// untouched. The server is light at idle (weights load lazily per job).
+const HUNYUAN_SERVER_DIR =
+  process.env.OIS_3D_SERVER_DIR ||
+  path.join(os.homedir(), 'Documents', 'Claude', 'Projects', 'hunyuan3d-mlx');
+let hunyuanServerProc = null;
+
+function hunyuanIsUp() {
+  return new Promise((resolve) => {
+    const req = http.request(
+      { host: '127.0.0.1', port: HUNYUAN_PORT, path: '/health', method: 'GET' },
+      (res) => {
+        res.resume();
+        resolve(res.statusCode === 200);
+      }
+    );
+    req.setTimeout(1500, () => req.destroy());
+    req.on('error', () => resolve(false));
+    req.end();
+  });
+}
+
+async function startHunyuanServer() {
+  if (await hunyuanIsUp()) return; // already running (e.g. started manually)
+  const py = path.join(HUNYUAN_SERVER_DIR, 'venv', 'bin', 'python');
+  const script = path.join(HUNYUAN_SERVER_DIR, 'server.py');
+  if (!fs.existsSync(py) || !fs.existsSync(script)) {
+    console.warn(
+      `[hunyuan] serveur introuvable dans ${HUNYUAN_SERVER_DIR} — Img→3D restera indisponible jusqu'au lancement manuel.`
+    );
+    return;
+  }
+  try {
+    hunyuanServerProc = spawn(py, [script], {
+      cwd: HUNYUAN_SERVER_DIR,
+      env: {
+        ...process.env,
+        HUNYUAN3D_MLX_WEIGHTS_DIR:
+          process.env.HUNYUAN3D_MLX_WEIGHTS_DIR ||
+          path.join(
+            os.homedir(),
+            '.lmstudio',
+            'models',
+            'dgrauet',
+            'hunyuan3d-2.1-mlx'
+          ),
+      },
+      stdio: 'ignore',
+    });
+    hunyuanServerProc.on('exit', () => {
+      hunyuanServerProc = null;
+    });
+  } catch (err) {
+    console.warn('[hunyuan] échec du démarrage du serveur 3D :', err.message);
+  }
+}
+
+function stopHunyuanServer() {
+  if (hunyuanServerProc) {
+    try {
+      hunyuanServerProc.kill('SIGTERM');
+    } catch {}
+    hunyuanServerProc = null;
+  }
+}
+
 ipcMain.handle('hunyuan:health', async () => {
   try {
     const r = await hunyuanRequest({
@@ -743,12 +812,18 @@ function createWindow() {
 app.whenReady().then(() => {
   ensureDir(APP_SUPPORT_DIR);
   createWindow();
+  startHunyuanServer(); // fire-and-forget; renderer flips to "serveur OK" once up
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
+// Shut the 3D server down with the app (only if we started it).
+app.on('before-quit', stopHunyuanServer);
+app.on('will-quit', stopHunyuanServer);
+
 app.on('window-all-closed', () => {
+  stopHunyuanServer();
   if (process.platform !== 'darwin') app.quit();
 });
