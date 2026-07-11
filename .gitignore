@@ -3,3 +3,8 @@ dist/
 release/
 .DS_Store
 *.log
+engine/venv/
+engine/Hunyuan3D-2.1-mlx/
+engine/jobs/
+engine/__pycache__/
+engine/.installed

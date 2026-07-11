@@ -9,20 +9,26 @@ const { spawn } = require('node:child_process');
 const jscadModeling = require('@jscad/modeling');
 const stlSerializer = require('@jscad/stl-serializer');
 
+const APP_NAME = 'Xreality Convert';
+const APP_ID = 'com.xreality.convert';
+
 const OLLAMA_HOST = 'localhost';
 const OLLAMA_PORT = 11434;
 
 const isDev = process.env.NODE_ENV === 'development';
 
+app.setName(APP_NAME);
+app.setAppUserModelId(APP_ID);
+
 // --- Persistence paths -----------------------------------------------------
 const APP_SUPPORT_DIR = path.join(
   app.getPath('appData'),
-  'OllamaImageStudio'
+  'XrealityConvert'
 );
 const HISTORY_FILE = path.join(APP_SUPPORT_DIR, 'history.json');
 const STL_CACHE_DIR = path.join(APP_SUPPORT_DIR, 'stl-cache');
-const PICTURES_DIR = path.join(app.getPath('pictures'), 'OllamaImageStudio');
-const STL_SAVE_DIR = path.join(app.getPath('documents'), 'OllamaImageStudio');
+const PICTURES_DIR = path.join(app.getPath('pictures'), 'XrealityConvert');
+const STL_SAVE_DIR = path.join(app.getPath('documents'), 'XrealityConvert');
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
@@ -78,10 +84,67 @@ function ollamaRequest({ method, pathName, body, timeout, signal }) {
 
 // Track the active generation so Cancel can abort it.
 let activeController = null;
+let ollamaProcess = null;
+let ollamaStartPromise = null;
+
+async function ollamaIsUp() {
+  try {
+    const res = await ollamaRequest({ method: 'GET', pathName: '/api/tags', timeout: 1500 });
+    return res.statusCode === 200;
+  } catch {
+    return false;
+  }
+}
+
+async function waitForOllama(timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await ollamaIsUp()) return true;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  return false;
+}
+
+async function ensureOllamaRunning() {
+  if (await ollamaIsUp()) return true;
+  if (ollamaStartPromise) return ollamaStartPromise;
+  ollamaStartPromise = (async () => {
+    const candidates = [
+      process.env.OLLAMA_PATH,
+      '/opt/homebrew/bin/ollama',
+      '/usr/local/bin/ollama',
+      'ollama',
+    ].filter(Boolean);
+    for (const executable of candidates) {
+      try {
+        ollamaProcess = spawn(executable, ['serve'], {
+          detached: false,
+          stdio: 'ignore',
+          env: process.env,
+        });
+        ollamaProcess.on('error', () => {});
+        if (await waitForOllama(8000)) return true;
+      } catch {}
+    }
+    // The macOS app may be installed even when its CLI isn't in PATH.
+    try {
+      spawn('/usr/bin/open', ['-a', 'Ollama'], { detached: true, stdio: 'ignore' }).unref();
+      return await waitForOllama(12000);
+    } catch {
+      return false;
+    }
+  })();
+  try {
+    return await ollamaStartPromise;
+  } finally {
+    ollamaStartPromise = null;
+  }
+}
 
 // --- IPC: check Ollama status + list image models --------------------------
 ipcMain.handle('ollama:checkStatus', async () => {
   try {
+    await ensureOllamaRunning();
     const res = await ollamaRequest({
       method: 'GET',
       pathName: '/api/tags',
@@ -101,6 +164,26 @@ ipcMain.handle('ollama:checkStatus', async () => {
     return { connected: true, models: imageModels, allModels };
   } catch (err) {
     return { connected: false, models: [], error: err.message };
+  }
+});
+
+ipcMain.handle('ollama:pullModel', async (_event, model) => {
+  await ensureOllamaRunning();
+  try {
+    const res = await ollamaRequest({
+      method: 'POST',
+      pathName: '/api/pull',
+      timeout: 3600000,
+      body: { model, stream: false },
+    });
+    if (res.statusCode !== 200) {
+      let error = `HTTP ${res.statusCode}`;
+      try { error = JSON.parse(res.body).error || error; } catch {}
+      return { ok: false, error };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
   }
 });
 
@@ -392,7 +475,13 @@ async function requestJscadCode(model, userPrompt, seed, signal, repair) {
 const STL_MAX_ATTEMPTS = 3;
 
 ipcMain.handle('ollama:generateStl', async (_event, params) => {
-  const { model, prompt, seed } = params;
+  const { model, prompt, seed, profile, targetFaces } = params;
+  const productionConstraint = profile === 'lowpoly'
+    ? `\nXR DELIVERY PROFILE: LOW POLY. Use a clean readable silhouette, merge parts, avoid invisible details, use 8-16 segments on curves, and stay below ${targetFaces || 12000} triangles.`
+    : profile === 'maxquality'
+    ? `\nXR DELIVERY PROFILE: MAXIMUM QUALITY. Use 48-64 segments on curves, refined transitions, and detailed but watertight construction.`
+    : `\nXR DELIVERY PROFILE: ${profile || 'xreal'}. Keep the result efficient and below approximately ${targetFaces || 50000} triangles.`;
+  const optimizedPrompt = `${prompt}${productionConstraint}`;
   activeController = new AbortController();
   const startedAt = Date.now();
 
@@ -409,7 +498,7 @@ ipcMain.handle('ollama:generateStl', async (_event, params) => {
       const repair = i > 0 ? { error: lastError, code } : null;
       const res = await requestJscadCode(
         model,
-        prompt,
+        optimizedPrompt,
         seed,
         activeController.signal,
         repair
@@ -544,6 +633,7 @@ ipcMain.handle('ollama:saveHistory', async (_event, history) => {
 
 // --- Hunyuan3D (image -> 3D mesh) via local FastAPI server -----------------
 const HUNYUAN_PORT = 8765;
+const HUNYUAN_INSTALL_VERSION = '3';
 
 function hunyuanRequest({ method, pathName, body, timeout }) {
   return new Promise((resolve, reject) => {
@@ -577,14 +667,44 @@ function hunyuanRequest({ method, pathName, body, timeout }) {
   });
 }
 
+async function hunyuanCancelCurrentJob() {
+  if (!hunyuanActiveJobId) return false;
+  try {
+    await hunyuanRequest({
+      method: 'POST',
+      pathName: `/cancel/${hunyuanActiveJobId}`,
+      timeout: 5000,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Auto-start the local 3D server when the app launches, so the Img→3D mode
 // works without the user manually running it. We only manage (and later kill)
 // the process if WE started it — a server the user launched by hand is left
 // untouched. The server is light at idle (weights load lazily per job).
-const HUNYUAN_SERVER_DIR =
-  process.env.OIS_3D_SERVER_DIR ||
-  path.join(os.homedir(), 'Documents', 'Claude', 'Projects', 'hunyuan3d-mlx');
+const BUNDLED_ENGINE_DIR = isDev
+  ? path.join(__dirname, '..', 'engine')
+  : path.join(process.resourcesPath, 'app.asar.unpacked', 'engine');
+const HUNYUAN_SERVER_DIR = process.env.OIS_3D_SERVER_DIR || (isDev
+  ? BUNDLED_ENGINE_DIR
+  : path.join(APP_SUPPORT_DIR, 'engine'));
 let hunyuanServerProc = null;
+let hunyuanInstallProc = null;
+let hunyuanActiveJobId = null;
+
+function prepareHunyuanEngineFiles() {
+  if (HUNYUAN_SERVER_DIR === BUNDLED_ENGINE_DIR) return;
+  ensureDir(HUNYUAN_SERVER_DIR);
+  for (const filename of ['server.py', 'setup.sh']) {
+    const source = path.join(BUNDLED_ENGINE_DIR, filename);
+    if (fs.existsSync(source)) {
+      fs.copyFileSync(source, path.join(HUNYUAN_SERVER_DIR, filename));
+    }
+  }
+}
 
 function hunyuanIsUp() {
   return new Promise((resolve) => {
@@ -616,15 +736,9 @@ async function startHunyuanServer() {
       cwd: HUNYUAN_SERVER_DIR,
       env: {
         ...process.env,
-        HUNYUAN3D_MLX_WEIGHTS_DIR:
-          process.env.HUNYUAN3D_MLX_WEIGHTS_DIR ||
-          path.join(
-            os.homedir(),
-            '.lmstudio',
-            'models',
-            'dgrauet',
-            'hunyuan3d-2.1-mlx'
-          ),
+        ...(process.env.HUNYUAN3D_MLX_WEIGHTS_DIR
+          ? { HUNYUAN3D_MLX_WEIGHTS_DIR: process.env.HUNYUAN3D_MLX_WEIGHTS_DIR }
+          : {}),
       },
       stdio: 'ignore',
     });
@@ -659,9 +773,83 @@ ipcMain.handle('hunyuan:health', async () => {
   }
 });
 
+ipcMain.handle('hunyuan:analyze', async (_event, params) => {
+  try {
+    const r = await hunyuanRequest({
+      method: 'POST',
+      pathName: '/analyze',
+      timeout: 60000,
+      body: {
+        image_base64: params.imageBase64,
+        category: params.category || 'custom',
+        background_mode: params.backgroundMode || 'auto',
+      },
+    });
+    if (r.statusCode !== 200) {
+      let error = `HTTP ${r.statusCode}`;
+      try {
+        const parsed = JSON.parse(r.body);
+        error = parsed.detail || parsed.error || error;
+      } catch {}
+      return { ok: false, error };
+    }
+    return { ok: true, ...JSON.parse(r.body) };
+  } catch (err) {
+    if (err.code === 'ECONNREFUSED') {
+      return { ok: false, error: 'Serveur 3D non démarré.' };
+    }
+    return { ok: false, error: err.message };
+  }
+});
+
+// Bootstrap the bundled Apple-Silicon engine. We install code and Python
+// dependencies once; model weights are fetched lazily at first conversion.
+ipcMain.handle('hunyuan:install', async () => {
+  if (hunyuanInstallProc) {
+    return { ok: false, error: 'La instalación del motor ya está en curso.' };
+  }
+  let installedVersion = '';
+  try { installedVersion = fs.readFileSync(path.join(HUNYUAN_SERVER_DIR, '.installed'), 'utf8').trim(); } catch {}
+  const installed =
+    installedVersion === HUNYUAN_INSTALL_VERSION &&
+    fs.existsSync(path.join(HUNYUAN_SERVER_DIR, 'venv', 'bin', 'python')) &&
+    fs.existsSync(path.join(HUNYUAN_SERVER_DIR, 'Hunyuan3D-2.1-mlx', '.git'));
+  if (installed) {
+    await startHunyuanServer();
+    return { ok: true, cached: true };
+  }
+  const setup = path.join(HUNYUAN_SERVER_DIR, 'setup.sh');
+  if (!fs.existsSync(setup)) {
+    return { ok: false, error: 'No se encontró el instalador del motor 3D.' };
+  }
+  return new Promise((resolve) => {
+    const output = [];
+    hunyuanInstallProc = spawn('/bin/zsh', [setup], {
+      cwd: HUNYUAN_SERVER_DIR,
+      env: process.env,
+    });
+    hunyuanInstallProc.stdout.on('data', (data) => output.push(data.toString()));
+    hunyuanInstallProc.stderr.on('data', (data) => output.push(data.toString()));
+    hunyuanInstallProc.on('error', (err) => {
+      hunyuanInstallProc = null;
+      resolve({ ok: false, error: err.message });
+    });
+    hunyuanInstallProc.on('close', (code) => {
+      hunyuanInstallProc = null;
+      if (code !== 0) {
+        resolve({ ok: false, error: output.join('').slice(-1400) || `El instalador terminó con código ${code}.` });
+        return;
+      }
+      startHunyuanServer();
+      resolve({ ok: true });
+    });
+  });
+});
+
 let hunyuanCancelled = false;
 ipcMain.handle('hunyuan:cancel3D', async () => {
   hunyuanCancelled = true;
+  await hunyuanCancelCurrentJob();
   return { ok: true };
 });
 
@@ -685,10 +873,17 @@ ipcMain.handle('hunyuan:pickImage', async () => {
 
 // Start a job and poll until done. The mesh build is long (~9 min), so we poll
 // the server's job status rather than holding one giant request.
-ipcMain.handle('hunyuan:generate3D', async (_event, params) => {
-  const { imageBase64, steps, octree, texture, mock } = params;
+ipcMain.handle('hunyuan:generate3D', async (event, params) => {
+  const { imageBase64, steps, octree, texture, targetFaces, scale, profile, category, guidance, backgroundMode, subjectPadding, mock } = params;
   hunyuanCancelled = false;
   try {
+    event.sender.send('hunyuan:progress', {
+      stage: 'Preparando referencia',
+      progress: 4,
+      percent: 4,
+      remaining: null,
+      status: 'starting',
+    });
     const startRes = await hunyuanRequest({
       method: 'POST',
       pathName: '/generate',
@@ -698,6 +893,13 @@ ipcMain.handle('hunyuan:generate3D', async (_event, params) => {
         steps: steps || 30,
         octree_resolution: octree || 256,
         texture: !!texture,
+        target_faces: targetFaces || 50000,
+        scale_meters: scale || 1,
+        profile: profile || 'xreal',
+        category: category || 'custom',
+        guidance: guidance || 6.0,
+        background_mode: backgroundMode || 'auto',
+        subject_padding: subjectPadding || 0.16,
         mock: !!mock,
       },
     });
@@ -705,10 +907,15 @@ ipcMain.handle('hunyuan:generate3D', async (_event, params) => {
       return { ok: false, error: `Serveur 3D: HTTP ${startRes.statusCode}` };
     }
     const { job_id } = JSON.parse(startRes.body);
+    hunyuanActiveJobId = job_id;
 
     // Poll loop.
     for (;;) {
-      if (hunyuanCancelled) return { ok: false, cancelled: true };
+      if (hunyuanCancelled) {
+        await hunyuanCancelCurrentJob();
+        hunyuanActiveJobId = null;
+        return { ok: false, cancelled: true };
+      }
       await new Promise((r) => setTimeout(r, 2000));
       const s = await hunyuanRequest({
         method: 'GET',
@@ -716,25 +923,41 @@ ipcMain.handle('hunyuan:generate3D', async (_event, params) => {
         timeout: 10000,
       });
       const js = JSON.parse(s.body);
+      event.sender.send('hunyuan:progress', {
+        jobId: job_id,
+        stage: js.stage || 'Procesando',
+        progress: Number.isFinite(js.progress) ? js.progress : 0,
+        percent: Number.isFinite(js.progress) ? js.progress : 0,
+        remaining: null,
+        status: js.status,
+      });
       if (js.status === 'done') {
         const buf = await fsp.readFile(js.glb_path);
+        hunyuanActiveJobId = null;
         return {
           ok: true,
           glbBase64: buf.toString('base64'),
           glbPath: js.glb_path,
           faces: js.faces,
           duration: js.elapsed,
+          reportPath: js.report_path,
+          qualityLevel: js.quality_level,
+          qualityScore: js.quality_score,
+          qualityText: js.quality_text,
         };
       }
       if (js.status === 'error') {
+        hunyuanActiveJobId = null;
         return { ok: false, error: js.error || 'Génération 3D échouée.' };
       }
       if (js.status === 'unknown') {
+        hunyuanActiveJobId = null;
         return { ok: false, error: 'Job 3D introuvable.' };
       }
       // queued / running -> keep polling
     }
   } catch (err) {
+    hunyuanActiveJobId = null;
     if (err.code === 'ECONNREFUSED') {
       return {
         ok: false,
@@ -792,8 +1015,10 @@ function createWindow() {
     height: 800,
     minWidth: 900,
     minHeight: 600,
-    backgroundColor: '#0f0f0f',
+    backgroundColor: '#020b1c',
+    title: APP_NAME,
     titleBarStyle: 'default', // native macOS traffic lights
+    icon: path.join(__dirname, '..', 'build', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -811,6 +1036,13 @@ function createWindow() {
 
 app.whenReady().then(() => {
   ensureDir(APP_SUPPORT_DIR);
+  prepareHunyuanEngineFiles();
+  if (process.platform === 'darwin' && app.dock?.setIcon) {
+    const dockIcon = path.join(__dirname, '..', 'build', 'icon.png');
+    if (fs.existsSync(dockIcon)) {
+      app.dock.setIcon(dockIcon);
+    }
+  }
   createWindow();
   startHunyuanServer(); // fire-and-forget; renderer flips to "serveur OK" once up
 

@@ -1,0 +1,49 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="72" y1="48" x2="440" y2="464" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#061429" />
+      <stop offset="1" stop-color="#030D20" />
+    </linearGradient>
+    <linearGradient id="panel" x1="142" y1="126" x2="370" y2="388" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#123A66" stop-opacity="0.92" />
+      <stop offset="1" stop-color="#071A33" stop-opacity="0.96" />
+    </linearGradient>
+    <linearGradient id="front" x1="188" y1="188" x2="302" y2="336" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1689E8" />
+      <stop offset="1" stop-color="#35A7FF" />
+    </linearGradient>
+    <linearGradient id="side" x1="288" y1="182" x2="392" y2="330" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0C58B2" />
+      <stop offset="1" stop-color="#0B3E82" />
+    </linearGradient>
+    <linearGradient id="top" x1="214" y1="146" x2="356" y2="230" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1A63C6" />
+      <stop offset="1" stop-color="#2FB0FF" />
+    </linearGradient>
+    <filter id="glow" x="0" y="0" width="512" height="512" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="32" />
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="112" fill="url(#bg)" />
+  <circle cx="176" cy="168" r="120" fill="#35A7FF" fill-opacity="0.16" filter="url(#glow)" />
+  <circle cx="360" cy="348" r="110" fill="#52D7FF" fill-opacity="0.11" filter="url(#glow)" />
+
+  <rect x="88" y="88" width="336" height="336" rx="88" fill="url(#panel)" stroke="#61D3FF" stroke-opacity="0.18" stroke-width="4" />
+
+  <ellipse cx="256" cy="270" rx="112" ry="112" stroke="#52D7FF" stroke-opacity="0.22" stroke-width="8" />
+  <path d="M144 262C175 179 286 130 370 175" stroke="#C9F7FF" stroke-opacity="0.45" stroke-width="10" stroke-linecap="round" />
+  <path d="M144 278C175 361 286 410 370 365" stroke="#0A315F" stroke-opacity="0.55" stroke-width="8" stroke-linecap="round" />
+
+  <path d="M256 126L350 178L256 232L162 178L256 126Z" fill="url(#top)" stroke="#EAFBFF" stroke-opacity="0.6" stroke-width="3" />
+  <path d="M350 178L350 300L256 356L256 232L350 178Z" fill="url(#side)" stroke="#EAFBFF" stroke-opacity="0.34" stroke-width="3" />
+  <path d="M256 232V356L162 300V178L256 232Z" fill="url(#front)" stroke="#EAFBFF" stroke-opacity="0.72" stroke-width="3" />
+
+  <path d="M212 210L250 188L320 220" stroke="#D6FBFF" stroke-opacity="0.42" stroke-width="6" stroke-linecap="round" />
+  <path d="M212 256L250 234L320 266" stroke="#D6FBFF" stroke-opacity="0.28" stroke-width="5" stroke-linecap="round" />
+  <path d="M212 302L250 280L320 312" stroke="#D6FBFF" stroke-opacity="0.22" stroke-width="5" stroke-linecap="round" />
+
+  <circle cx="182" cy="330" r="10" fill="#52D7FF" />
+  <circle cx="334" cy="188" r="10" fill="#52D7FF" />
+  <circle cx="338" cy="324" r="10" fill="#52D7FF" />
+</svg>
