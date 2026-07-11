@@ -1,6 +1,7 @@
 # Xreality Convert
 
-Fork maintained in [Brujo2020/xr-forge-studio](https://github.com/Brujo2020/xr-forge-studio), based on the original [ollama-image-studio](https://github.com/koua29/ollama-image-studio) project.
+Xreality Convert lives in [Brujo2020/xr-forge-studio](https://github.com/Brujo2020/xr-forge-studio).
+This repo is the maintained macOS fork for local AI asset creation.
 
 [![Version](https://img.shields.io/badge/version-v1.2.2-0ea5e9?style=for-the-badge)](https://github.com/Brujo2020/xr-forge-studio/releases/tag/v1.2.2)
 [![Release](https://img.shields.io/github/v/release/Brujo2020/xr-forge-studio?style=for-the-badge&label=release)](https://github.com/Brujo2020/xr-forge-studio/releases/tag/v1.2.2)
@@ -94,6 +95,7 @@ This fork focuses on:
 - Updated docs and bilingual manual
 - Signed/notarized macOS distribution
 - Local Image → 3D installer fixes
+- Fork packaging and release workflow
 
 ## License
 
