@@ -633,7 +633,7 @@ ipcMain.handle('ollama:saveHistory', async (_event, history) => {
 
 // --- Hunyuan3D (image -> 3D mesh) via local FastAPI server -----------------
 const HUNYUAN_PORT = 8765;
-const HUNYUAN_INSTALL_VERSION = '3';
+const HUNYUAN_INSTALL_VERSION = '4';
 
 function hunyuanRequest({ method, pathName, body, timeout }) {
   return new Promise((resolve, reject) => {

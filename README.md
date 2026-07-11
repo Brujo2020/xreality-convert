@@ -73,7 +73,7 @@ Glissez ensuite **Ollama Image Studio.app** dans votre dossier `/Applications`, 
 
 Le mode **Img→3D** s'appuie sur Hunyuan3D 2.1 (port MLX), qui tourne dans un **petit serveur Python séparé** (l'app le contacte sur `http://127.0.0.1:8765`). C'est une fonctionnalité **avancée**, distincte du cœur de l'app.
 
-Prérequis : Mac Apple Silicon (32 Go recommandés), Python 3.11, ~14 Go de poids de modèle.
+Prérequis : Mac Apple Silicon (32 Go recommandés), Python 3.11 ou 3.12, ~14 Go de poids de modèle.
 
 1. Récupère le pipeline MLX et les poids ([dgrauet/Hunyuan3D-2.1-mlx](https://github.com/dgrauet/Hunyuan3D-2.1-mlx), poids sur [Hugging Face](https://huggingface.co/dgrauet/hunyuan3d-2.1-mlx)).
 2. Crée un venv et installe les dépendances (`requirements-mlx.txt`).
