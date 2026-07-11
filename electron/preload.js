@@ -5,6 +5,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('ollama', {
   // -> { connected: boolean, models: string[], allModels?: string[], error?: string }
   checkStatus: () => ipcRenderer.invoke('ollama:checkStatus'),
+  pullModel: (model) => ipcRenderer.invoke('ollama:pullModel', model),
 
   // params: { model, prompt, width, height, steps, seed }
   // -> { ok: true, image: base64, duration: number } | { ok: false, error, cancelled? }
@@ -44,9 +45,23 @@ contextBridge.exposeInMainWorld('hunyuan', {
   // -> { up: boolean, model_loaded?: boolean }
   health: () => ipcRenderer.invoke('hunyuan:health'),
 
+  // params: { imageBase64, category, backgroundMode }
+  // -> { ok: true, ...diagnosis } | { ok: false, error }
+  analyze: (params) => ipcRenderer.invoke('hunyuan:analyze', params),
+
+  // One-click setup for the bundled Apple Silicon image-to-3D engine.
+  install: () => ipcRenderer.invoke('hunyuan:install'),
+
   // params: { imageBase64, steps, octree, mock }
   // -> { ok, glbBase64, glbPath, faces, duration } | { ok:false, error, cancelled? }
   generate3D: (params) => ipcRenderer.invoke('hunyuan:generate3D', params),
+
+  // Subscribe to progress updates emitted by the main process.
+  onProgress: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('hunyuan:progress', listener);
+    return () => ipcRenderer.removeListener('hunyuan:progress', listener);
+  },
 
   cancel3D: () => ipcRenderer.invoke('hunyuan:cancel3D'),
 

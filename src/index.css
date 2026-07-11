@@ -11,11 +11,58 @@
 
   body {
     margin: 0;
-    background-color: #0f0f0f;
+    background-color: #020b1c;
     color: #e5e5e5;
     font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
     -webkit-font-smoothing: antialiased;
     overflow: hidden;
+    background-image:
+      radial-gradient(circle at 16% 8%, rgba(22, 137, 232, 0.16), transparent 32%),
+      radial-gradient(circle at 88% 80%, rgba(82, 215, 255, 0.08), transparent 28%);
+  }
+
+  button,
+  select,
+  input,
+  textarea {
+    font: inherit;
+  }
+
+  button:focus-visible,
+  select:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid #52d7ff;
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .glass-card {
+    border: 1px solid rgba(125, 211, 252, 0.10);
+    background: linear-gradient(145deg, rgba(15, 42, 72, 0.72), rgba(5, 18, 38, 0.64));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 18px 45px rgba(0, 5, 18, 0.22);
+    backdrop-filter: blur(18px) saturate(125%);
+  }
+
+  .field-modern {
+    width: 100%;
+    border-radius: 0.75rem;
+    border: 1px solid rgba(125, 211, 252, 0.12);
+    background: rgba(1, 9, 24, 0.58);
+    padding: 0.7rem 0.8rem;
+    color: #eaf7ff;
+    font-size: 0.78rem;
+    box-shadow: inset 0 1px 8px rgba(0, 0, 0, 0.22);
+    transition: border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+  }
+
+  .field-modern:hover,
+  .field-modern:focus {
+    border-color: rgba(82, 215, 255, 0.42);
+    background: rgba(3, 17, 40, 0.76);
+    box-shadow: 0 0 0 3px rgba(22, 137, 232, 0.07), inset 0 1px 8px rgba(0, 0, 0, 0.2);
+    outline: none;
   }
 }
 
@@ -29,20 +76,20 @@
     background: transparent;
   }
   .scroll-dark::-webkit-scrollbar-thumb {
-    background: #2a2a2a;
+    background: #173659;
     border-radius: 4px;
   }
   .scroll-dark::-webkit-scrollbar-thumb:hover {
-    background: #3a3a3a;
+    background: #23517f;
   }
 
-  /* Violet accent slider track + thumb. */
+  /* Electric-blue controls over the deep navy interface. */
   .slider-accent {
     -webkit-appearance: none;
     appearance: none;
     height: 4px;
     border-radius: 9999px;
-    background: #2a2a2a;
+    background: #173659;
     outline: none;
   }
   .slider-accent::-webkit-slider-thumb {
@@ -51,13 +98,23 @@
     width: 16px;
     height: 16px;
     border-radius: 9999px;
-    background: #7c3aed;
+    background: #1689e8;
     cursor: pointer;
-    border: 2px solid #0f0f0f;
-    box-shadow: 0 0 0 1px #7c3aed;
+    border: 2px solid #020b1c;
+    box-shadow: 0 0 0 1px #1689e8;
     transition: background 0.15s ease;
   }
   .slider-accent::-webkit-slider-thumb:hover {
-    background: #8b5cf6;
+    background: #35a7ff;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }

@@ -25,12 +25,12 @@ export default function GltfViewer({ glbBase64 }) {
     const height = mount.clientHeight;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x141414);
+    scene.background = new THREE.Color(0x030d20);
 
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.01, 5000);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(width, height);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     mount.appendChild(renderer.domElement);
@@ -39,7 +39,7 @@ export default function GltfViewer({ glbBase64 }) {
     const key = new THREE.DirectionalLight(0xffffff, 1.2);
     key.position.set(1, 1.5, 1);
     scene.add(key);
-    const fill = new THREE.DirectionalLight(0x8b5cf6, 0.5);
+    const fill = new THREE.DirectionalLight(0x35a7ff, 0.65);
     fill.position.set(-1, -0.5, -1);
     scene.add(fill);
 
@@ -74,7 +74,7 @@ export default function GltfViewer({ glbBase64 }) {
         controls.target.set(0, 0, 0);
         controls.update();
 
-        const grid = new THREE.GridHelper(radius * 4, 20, 0x333333, 0x222222);
+        const grid = new THREE.GridHelper(radius * 4, 20, 0x1689e8, 0x0b2543);
         grid.position.y = -radius;
         scene.add(grid);
       },

@@ -1,7 +1,7 @@
 {
-  "name": "ollama-image-studio",
-  "version": "1.2.1",
-  "description": "Local GUI for generating images via the Ollama API",
+  "name": "xreality-convert",
+  "version": "1.2.2",
+  "description": "Conversor local de referencias a activos 3D optimizados para Xreality y spatial computing",
   "author": "Arnaud Soulas",
   "license": "MIT",
   "main": "electron/main.js",
@@ -35,10 +35,18 @@
     "three": "^0.185.0"
   },
   "build": {
-    "appId": "com.ollamaimagestudio.app",
-    "productName": "Ollama Image Studio",
+    "appId": "com.xreality.convert",
+    "productName": "Xreality Convert",
+    "icon": "build/icon.icns",
+    "asarUnpack": [
+      "engine/server.py",
+      "engine/setup.sh"
+    ],
     "files": [
+      "build/**/*",
       "electron/**/*",
+      "engine/server.py",
+      "engine/setup.sh",
       "dist/**/*"
     ],
     "directories": {

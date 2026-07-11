@@ -17,12 +17,12 @@ export default function StlViewer({ stl }) {
 
     // Scene + background matching the dark theme.
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x141414);
+    scene.background = new THREE.Color(0x030d20);
 
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 5000);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(width, height);
     mount.appendChild(renderer.domElement);
 
@@ -31,7 +31,7 @@ export default function StlViewer({ stl }) {
     const key = new THREE.DirectionalLight(0xffffff, 1.1);
     key.position.set(1, 1, 1);
     scene.add(key);
-    const fill = new THREE.DirectionalLight(0x8b5cf6, 0.4);
+    const fill = new THREE.DirectionalLight(0x35a7ff, 0.55);
     fill.position.set(-1, -0.5, -1);
     scene.add(fill);
 
