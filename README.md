@@ -2,6 +2,10 @@
 
 Fork maintained in [Brujo2020/xr-forge-studio](https://github.com/Brujo2020/xr-forge-studio), based on the original [ollama-image-studio](https://github.com/koua29/ollama-image-studio) project.
 
+[![Version](https://img.shields.io/badge/version-v1.2.2-0ea5e9?style=for-the-badge)](https://github.com/Brujo2020/xr-forge-studio/releases/tag/v1.2.2)
+[![Release](https://img.shields.io/github/v/release/Brujo2020/xr-forge-studio?style=for-the-badge&label=release)](https://github.com/Brujo2020/xr-forge-studio/releases/tag/v1.2.2)
+[![Download DMG](https://img.shields.io/badge/download-DMG-22c55e?style=for-the-badge)](https://github.com/Brujo2020/xr-forge-studio/releases/download/v1.2.2/Xreality.Convert-1.2.2-arm64.dmg)
+
 Xreality Convert is a macOS desktop app for keeping local AI asset creation in one place:
 
 - Image generation with Ollama
@@ -20,7 +24,7 @@ La app está pensada para trabajar en local, con historial, diagnóstico y expor
 
 ## Install
 
-1. Download the latest `.dmg` from the GitHub release.
+1. Download the latest `.dmg` from the GitHub release or use the direct DMG link above.
 2. Drag `Xreality Convert.app` into `Applications`.
 3. Launch the app.
 4. On first launch, if macOS shows a warning, right-click the app and choose `Open`.
