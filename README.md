@@ -1,18 +1,16 @@
 # Xreality Convert
 
-Forked version maintained in [Brujo2020/xr-forge-studio](https://github.com/Brujo2020/xr-forge-studio), based on the original [ollama-image-studio](https://github.com/koua29/ollama-image-studio) project.
+Fork maintained in [Brujo2020/xr-forge-studio](https://github.com/Brujo2020/xr-forge-studio), based on the original [ollama-image-studio](https://github.com/koua29/ollama-image-studio) project.
 
-Desktop app for generating, converting, and auditing local AI assets on macOS.
-It combines three workflows in one interface:
+Xreality Convert is a macOS desktop app for keeping local AI asset creation in one place:
+
 - Image generation with Ollama
 - Text to 3D STL generation with local JSCAD
 - Image to 3D reconstruction with local Hunyuan3D MLX
 
-Aplicación de escritorio para generar, convertir y auditar activos AI locales en macOS.
-Combina tres flujos en una sola interfaz:
-- Generación de imágenes con Ollama
-- Texto a STL 3D con JSCAD local
-- Reconstrucción Imagen a 3D con Hunyuan3D MLX local
+La app está pensada para trabajar en local, con historial, diagnóstico y exportación segura para macOS.
+
+## Screenshots
 
 ![Xreality Convert - Image mode](docs/screenshot.png)
 
@@ -20,18 +18,32 @@ Combina tres flujos en una sola interfaz:
 
 ![Xreality Convert - Image to 3D](docs/screenshot-3d.png)
 
-## What you get / Qué incluye
+## Install
 
-- Local-first macOS app with Electron + React
+1. Download the latest `.dmg` from the GitHub release.
+2. Drag `Xreality Convert.app` into `Applications`.
+3. Launch the app.
+4. On first launch, if macOS shows a warning, right-click the app and choose `Open`.
+
+The release DMG is signed and notarized for safer installation on Mac.
+
+## Requirements
+
+- Apple Silicon macOS recommended
+- Ollama installed and running locally
+- Python 3.11 or 3.12 for Image to 3D
+- Local access to the Ollama models you want to use
+
+## Features
+
+- Local-first Electron + React app
 - Automatic Ollama health checks and model discovery
 - Cancelable jobs and local history
-- Bilingual docs and a current user manual
-- Imagen, STL y reconstrucción 3D totalmente locales
-- Verificación automática de Ollama y modelos instalados
-- Cancelación de trabajos e historial local
-- Documentación bilingüe y manual actualizado
+- Bilingual documentation and a current user manual
+- Native macOS branding, favicon, icon, and dock identity
+- Signed and notarized DMG distribution
 
-## Quick start / Inicio rápido
+## Quick Start
 
 ```bash
 git clone https://github.com/Brujo2020/xr-forge-studio.git
@@ -54,13 +66,30 @@ Read the full bilingual manual here:
 
 - [`docs/MANUAL.md`](docs/MANUAL.md)
 
-## Hunyuan3D setup
+## Image to 3D
 
-Image → 3D uses a separate local Python server. The bundled installer expects
-Python 3.11 or 3.12 on Apple Silicon and will recreate the environment if an
-older venv is detected.
+The Image → 3D workflow uses a separate local Python server.
 
-See the full setup steps in [`docs/MANUAL.md`](docs/MANUAL.md).
+Expected setup:
+
+1. Install Python 3.11 or 3.12.
+2. Run the built-in installer from the app.
+3. The app recreates the environment if it detects an incompatible venv.
+
+Full steps are documented in [`docs/MANUAL.md`](docs/MANUAL.md).
+
+## Release Notes
+
+- [`release-notes.md`](release-notes.md)
+
+## Fork Notes
+
+This fork focuses on:
+
+- Xreality Convert branding and app identity
+- Updated docs and bilingual manual
+- Signed/notarized macOS distribution
+- Local Image → 3D installer fixes
 
 ## License
 
