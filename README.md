@@ -1,5 +1,7 @@
 # Xreality Convert
 
+Forked version maintained in [Brujo2020/xr-forge-studio](https://github.com/Brujo2020/xr-forge-studio), based on the original [ollama-image-studio](https://github.com/koua29/ollama-image-studio) project.
+
 Desktop app for generating, converting, and auditing local AI assets on macOS.
 It combines three workflows in one interface:
 - Image generation with Ollama
@@ -63,3 +65,5 @@ See the full setup steps in [`docs/MANUAL.md`](docs/MANUAL.md).
 ## License
 
 [MIT](LICENSE) © 2026 Arnaud Soulas
+
+Fork maintenance and packaging updates: Brujo2020.
