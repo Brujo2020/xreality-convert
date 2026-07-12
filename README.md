@@ -1,10 +1,10 @@
 # Xreality Convert
 
-Xreality Convert is a standalone macOS app maintained in [Brujo2020/xr-image-3d-creator](https://github.com/Brujo2020/xr-image-3d-creator).
+Xreality Convert is a standalone macOS app maintained in [Brujo2020/xreality-convert](https://github.com/Brujo2020/xreality-convert).
 
-[![Version](https://img.shields.io/badge/version-v1.2.2-0ea5e9?style=for-the-badge)](https://github.com/Brujo2020/xr-image-3d-creator/releases/tag/v1.2.2)
-[![Release](https://img.shields.io/github/v/release/Brujo2020/xr-image-3d-creator?style=for-the-badge&label=release)](https://github.com/Brujo2020/xr-image-3d-creator/releases/tag/v1.2.2)
-[![Download DMG](https://img.shields.io/badge/download-DMG-22c55e?style=for-the-badge)](https://github.com/Brujo2020/xr-image-3d-creator/releases/download/v1.2.2/Xreality.Convert-1.2.2-arm64.dmg)
+[![Version](https://img.shields.io/badge/version-v1.2.2-0ea5e9?style=for-the-badge)](https://github.com/Brujo2020/xreality-convert/releases/tag/v1.2.2)
+[![Release](https://img.shields.io/github/v/release/Brujo2020/xreality-convert?style=for-the-badge&label=release)](https://github.com/Brujo2020/xreality-convert/releases/tag/v1.2.2)
+[![Download DMG](https://img.shields.io/badge/download-DMG-22c55e?style=for-the-badge)](https://github.com/Brujo2020/xreality-convert/releases/download/v1.2.2/Xreality.Convert-1.2.2-arm64.dmg)
 
 Xreality Convert is a macOS desktop app for keeping local AI asset creation in one place:
 
@@ -81,8 +81,8 @@ Use this mode to rebuild a single object or subject into a local 3D asset. The a
 ## Quick Start
 
 ```bash
-git clone https://github.com/Brujo2020/xr-image-3d-creator.git
-cd xr-image-3d-creator
+git clone https://github.com/Brujo2020/xreality-convert.git
+cd xreality-convert
 npm install
 npm run dev
 ```
