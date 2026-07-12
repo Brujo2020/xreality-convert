@@ -2,7 +2,7 @@
   "name": "xreality-convert",
   "version": "1.2.2",
   "description": "Conversor local de referencias a activos 3D optimizados para Xreality y spatial computing",
-  "author": "Arnaud Soulas",
+  "author": "Brujo2020",
   "license": "MIT",
   "main": "electron/main.js",
   "type": "module",

@@ -1,7 +1,6 @@
 # Xreality Convert
 
-Xreality Convert lives in [Brujo2020/xr-image-3d-creator](https://github.com/Brujo2020/xr-image-3d-creator).
-This repo is the maintained macOS fork for local AI asset creation.
+Xreality Convert is a standalone macOS app maintained in [Brujo2020/xr-image-3d-creator](https://github.com/Brujo2020/xr-image-3d-creator).
 
 [![Version](https://img.shields.io/badge/version-v1.2.2-0ea5e9?style=for-the-badge)](https://github.com/Brujo2020/xr-image-3d-creator/releases/tag/v1.2.2)
 [![Release](https://img.shields.io/github/v/release/Brujo2020/xr-image-3d-creator?style=for-the-badge&label=release)](https://github.com/Brujo2020/xr-image-3d-creator/releases/tag/v1.2.2)
@@ -125,18 +124,18 @@ Full steps are documented in [`docs/MANUAL.md`](docs/MANUAL.md).
 
 - [`release-notes.md`](release-notes.md)
 
-## Fork Notes
+## Project Notes
 
-This fork focuses on:
+This project focuses on:
 
 - Xreality Convert branding and app identity
 - Updated docs and bilingual manual
 - Signed/notarized macOS distribution
 - Local Image → 3D installer fixes
-- Fork packaging and release workflow
+- Packaging and release workflow
 
 ## License
 
-[MIT](LICENSE) © 2026 Arnaud Soulas
+[MIT](LICENSE) © 2026 Brujo2020
 
-Fork maintenance and packaging updates: Brujo2020.
+Maintained by Brujo2020.
