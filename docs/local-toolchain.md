@@ -57,3 +57,25 @@ la aplicación no ofrece un botón de instalación ni un fallback remoto.
   `StageAdmissionReceipt`.
 - Este registro no ejecuta conversiones, validaciones, optimizaciones ni codificación
   sobre activos; tampoco cambia el estado de Ollama ni de generación al actualizarse.
+
+## Estado de cierre
+
+Implementado en `main` con estas garantías:
+
+- El inventario se obtiene una vez al iniciar y sólo se repite al pulsar **Comprobar**.
+- Los probes tienen timeout, límite de salida y normalización cerrada de estados.
+- El renderer no recibe rutas, variables de entorno ni stdout/stderr de procesos.
+- El panel admite teclado, Escape, scroll interno y fallback seguro fuera de Electron.
+- Los visores STL/GLB y Three.js se cargan bajo demanda; no forman parte del bundle inicial.
+- Las ausencias de glTF Validator, glTF-Transform o KTX son capacidades opcionales,
+  no tareas pendientes ni errores de la aplicación.
+
+Gate de cierre:
+
+```sh
+npm run test:tools
+node --check electron/main.js
+node --check electron/preload.js
+node --check electron/tool-registry.js
+npm run build:vite
+```

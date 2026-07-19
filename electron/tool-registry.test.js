@@ -91,7 +91,7 @@ test('public snapshot extracts only a bounded version token from probe output', 
     status: 'ready',
     capabilities: ['optimize_gltf', 'convert_gltf'],
     bundled: false,
-    installHint: 'Install glTF-Transform to enable optional conversions.',
+    installHint: 'Instala glTF-Transform para habilitar conversiones opcionales.',
   });
   assert.equal(snapshot.includes(secret), false);
   assert.equal(snapshot.includes(privatePath), false);

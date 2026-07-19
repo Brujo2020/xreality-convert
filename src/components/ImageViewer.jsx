@@ -1,8 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import StlViewer from './StlViewer.jsx';
-import GltfViewer from './GltfViewer.jsx';
+import React, { Suspense, lazy, useState, useEffect } from 'react';
 import { USE_CASES } from '../lib/useCases.js';
 import { XR_PROFILES, profileAudit } from '../lib/xrProfiles.js';
+
+const StlViewer = lazy(() => import('./StlViewer.jsx'));
+const GltfViewer = lazy(() => import('./GltfViewer.jsx'));
+
+function ViewerFallback() {
+  return (
+    <div className="flex h-full w-full items-center justify-center font-mono text-[10px] uppercase tracking-[0.18em] text-sky-300/60">
+      Cargando visor 3D…
+    </div>
+  );
+}
 
 function Meta({ label, value }) {
   return (
@@ -54,7 +63,7 @@ export default function ImageViewer({
   const [showCode, setShowCode] = useState(false);
 
   useEffect(() => {
-    setSaveLabel(result?.filePath ? '✓ Saved' : defaultSaveLabel);
+    setSaveLabel(result?.filePath ? '✓ Guardado' : defaultSaveLabel);
     setCopyLabel('Copiar prompt');
     setStlLabel('Exportar STL');
     setShowCode(false);
@@ -158,11 +167,15 @@ export default function ImageViewer({
         <div className="flex min-h-0 flex-1 items-stretch justify-center self-stretch">
           {isGlb ? (
             <div className="h-full w-full overflow-hidden rounded-xl border border-border shadow-2xl">
-              <GltfViewer glbBase64={result.glbBase64} />
+              <Suspense fallback={<ViewerFallback />}>
+                <GltfViewer glbBase64={result.glbBase64} />
+              </Suspense>
             </div>
           ) : isStl ? (
             <div className="h-full w-full overflow-hidden rounded-xl border border-border shadow-2xl">
-              <StlViewer stl={result.stl} />
+              <Suspense fallback={<ViewerFallback />}>
+                <StlViewer stl={result.stl} />
+              </Suspense>
             </div>
           ) : (
             <div className="flex w-full items-center justify-center">
@@ -212,7 +225,7 @@ export default function ImageViewer({
           </div>
 
           <p className="mb-3 line-clamp-2 text-xs leading-relaxed text-neutral-400">
-            {isGlb ? `Source : ${result.prompt}` : result.prompt}
+            {isGlb ? `Fuente: ${result.prompt}` : result.prompt}
           </p>
 
           <div className="flex flex-wrap gap-2">
@@ -235,7 +248,7 @@ export default function ImageViewer({
               <button
                 onClick={handleSaveStl}
                 disabled={exportBlocked}
-                title="Exporter en STL pour l'impression 3D (mis à l'échelle ~60 mm)"
+                title="Exportar como STL para impresión 3D (escala aproximada de 60 mm)"
                 className="rounded-lg border border-border bg-elevated px-3 py-1.5 text-xs font-medium text-neutral-200 transition hover:border-neutral-600 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 {exportBlocked ? 'Bloqueado por calidad' : stlLabel}

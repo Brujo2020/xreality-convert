@@ -8,10 +8,10 @@ const BROWSER_LOCAL_TOOLS = [
   { id: 'pymeshlab', label: 'PyMeshLab', category: 'geometry', status: 'ready', capabilities: ['inspect_mesh', 'repair_advanced', 'simplify_mesh'], bundled: true, installHint: null },
   { id: 'xatlas', label: 'xatlas', category: 'uv', status: 'ready', capabilities: ['unwrap_uv'], bundled: true, installHint: null },
   { id: 'pygltflib', label: 'pygltflib', category: 'interchange', status: 'ready', capabilities: ['inspect_gltf', 'edit_gltf'], bundled: true, installHint: null },
-  { id: 'gltf_validator', label: 'glTF Validator', category: 'validation', status: 'missing', capabilities: ['validate_gltf'], bundled: false, installHint: 'Install Khronos glTF Validator to enable validation.' },
-  { id: 'gltf-transform', label: 'glTF-Transform', category: 'interchange', status: 'missing', capabilities: ['optimize_gltf', 'convert_gltf'], bundled: false, installHint: 'Install glTF-Transform to enable optional conversions.' },
-  { id: 'ktx', label: 'KTX-Software', category: 'texture', status: 'missing', capabilities: ['encode_ktx2'], bundled: false, installHint: 'Install KTX-Software to enable KTX2 encoding.' },
-  { id: 'blender', label: 'Blender', category: 'authoring', status: 'missing', capabilities: ['inspect_scene', 'convert_scene'], bundled: false, installHint: 'Install Blender to enable optional scene conversion.' },
+  { id: 'gltf_validator', label: 'glTF Validator', category: 'validation', status: 'missing', capabilities: ['validate_gltf'], bundled: false, installHint: 'Instala Khronos glTF Validator para habilitar la validación.' },
+  { id: 'gltf-transform', label: 'glTF-Transform', category: 'interchange', status: 'missing', capabilities: ['optimize_gltf', 'convert_gltf'], bundled: false, installHint: 'Instala glTF-Transform para habilitar conversiones opcionales.' },
+  { id: 'ktx', label: 'KTX-Software', category: 'texture', status: 'missing', capabilities: ['encode_ktx2'], bundled: false, installHint: 'Instala KTX-Software para habilitar la codificación KTX2.' },
+  { id: 'blender', label: 'Blender', category: 'authoring', status: 'missing', capabilities: ['inspect_scene', 'convert_scene'], bundled: false, installHint: 'Instala Blender para habilitar la conversión opcional de escenas.' },
 ];
 
 // Browser-only preview bridge. Electron replaces these APIs through preload;

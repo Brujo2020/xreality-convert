@@ -27,24 +27,24 @@ const TOOL_DEFINITIONS = Object.freeze([
   Object.freeze({
     id: 'gltf_validator', label: 'glTF Validator', category: 'validation', bundled: false,
     executableNames: Object.freeze(['gltf_validator']), capabilities: Object.freeze(['validate_gltf']),
-    installHint: 'Install Khronos glTF Validator to enable validation.',
+    installHint: 'Instala Khronos glTF Validator para habilitar la validación.',
   }),
   Object.freeze({
     id: 'gltf-transform', label: 'glTF-Transform', category: 'interchange', bundled: false,
     executableNames: Object.freeze(['gltf-transform']), capabilities: Object.freeze(['optimize_gltf', 'convert_gltf']),
-    installHint: 'Install glTF-Transform to enable optional conversions.',
+    installHint: 'Instala glTF-Transform para habilitar conversiones opcionales.',
   }),
   Object.freeze({
     id: 'ktx', label: 'KTX-Software', category: 'texture', bundled: false,
     executableNames: Object.freeze(['ktx', 'toktx']), capabilities: Object.freeze(['encode_ktx2']),
-    installHint: 'Install KTX-Software to enable KTX2 encoding.',
+    installHint: 'Instala KTX-Software para habilitar la codificación KTX2.',
   }),
   Object.freeze({
     id: 'blender', label: 'Blender', category: 'authoring', bundled: false,
     executableNames: Object.freeze(['blender']),
     macOSCandidates: Object.freeze(['/Applications/Blender.app/Contents/MacOS/Blender']),
     capabilities: Object.freeze(['inspect_scene', 'convert_scene']),
-    installHint: 'Install Blender to enable optional scene conversion.',
+    installHint: 'Instala Blender para habilitar la conversión opcional de escenas.',
   }),
 ]);
 

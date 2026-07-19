@@ -464,7 +464,7 @@ export default function App() {
       targetMm: stlMm,
     });
     if (!conv.ok) {
-      setError(conv.error || 'Conversion STL échouée.');
+      setError(conv.error || 'Falló la conversión a STL.');
       return null;
     }
     const dest = await window.hunyuan.saveGlb({
