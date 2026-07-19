@@ -38,17 +38,18 @@ la aplicación no ofrece un botón de instalación ni un fallback remoto.
 
 | Herramienta | Ejecutable | Capacidades informadas | Fuente oficial |
 | --- | --- | --- | --- |
-| Khronos glTF Validator | `gltf-validator` | `validate_gltf` | [Khronos glTF Validator](https://github.com/KhronosGroup/glTF-Validator) |
+| Khronos glTF Validator | `gltf_validator` | `validate_gltf` | [Khronos glTF Validator](https://github.com/KhronosGroup/glTF-Validator) |
 | glTF-Transform | `gltf-transform` | `optimize_gltf`, `convert_gltf` | [CLI oficial de glTF-Transform](https://gltf-transform.dev/cli.html) |
-| KTX-Software | `toktx` | `encode_ktx2` | [Khronos KTX-Software](https://github.com/KhronosGroup/KTX-Software) |
+| KTX-Software | `ktx` (preferido), `toktx` (fallback) | `encode_ktx2` | [Khronos KTX-Software](https://github.com/KhronosGroup/KTX-Software) |
 | Blender | `blender` | `inspect_scene`, `convert_scene` | [Manual oficial de Blender](https://docs.blender.org/manual/en/latest/) |
 
 ## Límites operativos
 
 - El descubrimiento es local: no usa red, gestores de paquetes ni URLs.
-- El renderer recibe sólo metadatos públicos: ID, versión, capacidades, estado y
-  pista de instalación. No recibe rutas de ejecutables, entorno ni salida cruda de
-  los probes.
+- El renderer recibe sólo metadatos públicos: ID, un token de versión numérico
+  acotado cuando puede extraerse, capacidades, estado y pista de instalación. Si la
+  salida no contiene un token de versión seguro, la versión se omite sin cambiar el
+  estado `ready`. No recibe rutas de ejecutables, entorno ni salida cruda de los probes.
 - Los estados son cerrados: `ready`, `missing` y `blocked`. Un fallo de probe queda
   `blocked`; una ausencia local queda `missing`.
 - `ready` significa que la herramienta se detectó y puede informar su capacidad.

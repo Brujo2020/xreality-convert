@@ -5,6 +5,7 @@ const path = require('node:path');
 const CACHE_MS = 30_000;
 const PROBE_TIMEOUT_MS = 2_000;
 const MAX_PROBE_BYTES = 8_192;
+const VERSION_TOKEN_PATTERN = /(?:^|[^0-9A-Za-z])v?(\d{1,4}(?:\.\d{1,4}){1,3}(?:[-+~][0-9A-Za-z][0-9A-Za-z.-]{0,31})?)(?=$|[^0-9A-Za-z])/;
 
 const TOOL_DEFINITIONS = Object.freeze([
   Object.freeze({
@@ -25,7 +26,7 @@ const TOOL_DEFINITIONS = Object.freeze([
   }),
   Object.freeze({
     id: 'gltf_validator', label: 'glTF Validator', category: 'validation', bundled: false,
-    executableNames: Object.freeze(['gltf-validator']), capabilities: Object.freeze(['validate_gltf']),
+    executableNames: Object.freeze(['gltf_validator']), capabilities: Object.freeze(['validate_gltf']),
     installHint: 'Install Khronos glTF Validator to enable validation.',
   }),
   Object.freeze({
@@ -35,7 +36,7 @@ const TOOL_DEFINITIONS = Object.freeze([
   }),
   Object.freeze({
     id: 'ktx', label: 'KTX-Software', category: 'texture', bundled: false,
-    executableNames: Object.freeze(['toktx']), capabilities: Object.freeze(['encode_ktx2']),
+    executableNames: Object.freeze(['ktx', 'toktx']), capabilities: Object.freeze(['encode_ktx2']),
     installHint: 'Install KTX-Software to enable KTX2 encoding.',
   }),
   Object.freeze({
@@ -47,19 +48,25 @@ const TOOL_DEFINITIONS = Object.freeze([
   }),
 ]);
 
+function extractVersionToken(value) {
+  if (typeof value !== 'string') return null;
+  const match = value.slice(0, 512).match(VERSION_TOKEN_PATTERN);
+  return match?.[1] || null;
+}
+
 function redactProbeResult(result) {
   if (!result || result.ok !== true) {
     return { ok: false, reason: result?.reason === 'not_found' ? 'not_found' : 'probe_failed' };
   }
-  const version = typeof result.version === 'string' ? result.version.trim().slice(0, 256) : '';
+  const version = extractVersionToken(result.version);
   return version ? { ok: true, version } : { ok: true };
 }
 
 function resolveBinary(tool, { pathEnv, existsSync }) {
   const candidates = [];
-  for (const directory of (pathEnv || '').split(path.delimiter)) {
-    if (!directory) continue;
-    for (const executableName of tool.executableNames) candidates.push(path.join(directory, executableName));
+  const directories = (pathEnv || '').split(path.delimiter).filter(Boolean);
+  for (const executableName of tool.executableNames) {
+    for (const directory of directories) candidates.push(path.join(directory, executableName));
   }
   if (process.platform === 'darwin') candidates.push(...(tool.macOSCandidates || []));
   return candidates.find((candidate) => existsSync(candidate)) || null;
@@ -153,4 +160,4 @@ function createToolRegistry(options = {}) {
   };
 }
 
-module.exports = { createToolRegistry, discoverLocalTools, redactProbeResult };
+module.exports = { createToolRegistry, discoverLocalTools, redactProbeResult, resolveBinary };
