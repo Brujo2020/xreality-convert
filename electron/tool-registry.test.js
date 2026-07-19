@@ -13,6 +13,11 @@ test('registry returns closed public descriptors without executable paths', asyn
   const result = await registry.list();
   assert.equal(result.tools.find((tool) => tool.id === 'trimesh').status, 'ready');
   assert.equal(JSON.stringify(result).includes('/private/runtime'), false);
+  for (const tool of result.tools) {
+    for (const field of ['path', 'command', 'stdout', 'stderr', 'env', 'environment']) {
+      assert.equal(field in tool, false, `${tool.id} exposes ${field}`);
+    }
+  }
 });
 
 test('registry caches probes until forced', async () => {
@@ -24,6 +29,9 @@ test('registry caches probes until forced', async () => {
   });
   await registry.list();
   await registry.list();
+  assert.equal(calls, 8);
+  await registry.list({ force: 'true' });
+  await registry.list({ force: 1 });
   assert.equal(calls, 8);
   await registry.list({ force: true });
   assert.equal(calls, 16);

@@ -691,6 +691,13 @@ const BUNDLED_ENGINE_DIR = isDev
 const HUNYUAN_SERVER_DIR = process.env.OIS_3D_SERVER_DIR || (isDev
   ? BUNDLED_ENGINE_DIR
   : path.join(APP_SUPPORT_DIR, 'engine'));
+const { createToolRegistry } = require('./tool-registry');
+const localToolRegistry = createToolRegistry({
+  enginePython: path.join(HUNYUAN_SERVER_DIR, 'venv', 'bin', 'python'),
+});
+ipcMain.handle('tools:list', async (_event, payload = {}) => (
+  localToolRegistry.list({ force: payload?.force === true })
+));
 let hunyuanServerProc = null;
 let hunyuanInstallProc = null;
 let hunyuanActiveJobId = null;

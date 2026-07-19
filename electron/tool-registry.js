@@ -145,7 +145,7 @@ function createToolRegistry(options = {}) {
   const now = options.now || Date.now;
   return {
     async list({ force = false } = {}) {
-      if (!force && cached && now() - checkedAt < CACHE_MS) return cached;
+      if (force !== true && cached && now() - checkedAt < CACHE_MS) return cached;
       cached = await discoverLocalTools({ ...options, now });
       checkedAt = now();
       return cached;

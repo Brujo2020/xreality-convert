@@ -40,6 +40,10 @@ contextBridge.exposeInMainWorld('ollama', {
   saveHistory: (history) => ipcRenderer.invoke('ollama:saveHistory', history),
 });
 
+contextBridge.exposeInMainWorld('localTools', {
+  list: (options = {}) => ipcRenderer.invoke('tools:list', { force: options.force === true }),
+});
+
 // Hunyuan3D image->3D mesh, served by the local Python (MLX) FastAPI server.
 contextBridge.exposeInMainWorld('hunyuan', {
   // -> { up: boolean, model_loaded?: boolean }
