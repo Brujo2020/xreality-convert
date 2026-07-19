@@ -46,6 +46,8 @@ export default function App() {
     checking: true,
     error: null,
   });
+  const [toolSnapshot, setToolSnapshot] = useState(null);
+  const [toolsChecking, setToolsChecking] = useState(true);
 
   // --- Conversión: texto o imagen hacia un activo 3D ---
   const [mode, setMode] = useState('image3d');
@@ -90,6 +92,7 @@ export default function App() {
   const hasInitStlModel = useRef(false);
   const hasInitImageModel = useRef(false);
   const hasAttemptedEngineBootstrap = useRef(false);
+  const hasCheckedLocalTools = useRef(false);
   const processing = generating || installingEngine || installingModel;
 
   useEffect(() => {
@@ -171,6 +174,24 @@ export default function App() {
     const id = setInterval(checkStatus, 5000);
     return () => clearInterval(id);
   }, [checkStatus]);
+
+  const checkLocalTools = useCallback(async (force = false) => {
+    setToolsChecking(true);
+    try {
+      const snapshot = await window.localTools.list({ force });
+      setToolSnapshot(snapshot);
+    } catch {
+      setToolSnapshot(null);
+    } finally {
+      setToolsChecking(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (hasCheckedLocalTools.current) return;
+    hasCheckedLocalTools.current = true;
+    checkLocalTools();
+  }, [checkLocalTools]);
 
   // Poll the local 3D server's health (only meaningful in image3d mode).
   useEffect(() => {
@@ -592,7 +613,13 @@ export default function App() {
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-base text-neutral-200 before:pointer-events-none before:absolute before:inset-0 before:bg-[linear-gradient(rgba(82,215,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(82,215,255,0.025)_1px,transparent_1px)] before:bg-[size:42px_42px]">
-      <Header status={status} onRefresh={checkStatus} />
+      <Header
+        status={status}
+        onRefresh={checkStatus}
+        toolSnapshot={toolSnapshot}
+        toolsChecking={toolsChecking}
+        onToolsRefresh={() => checkLocalTools(true)}
+      />
 
       <div className="relative z-10 flex min-h-0 flex-1 gap-3 p-3">
         {/* Left: form */}
