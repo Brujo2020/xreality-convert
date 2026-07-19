@@ -1,6 +1,6 @@
 {
   "name": "xreality-convert",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Conversor local de referencias a activos 3D optimizados para Xreality y spatial computing",
   "author": "Brujo2020",
   "license": "MIT",
@@ -11,7 +11,7 @@
     "dev:vite": "vite",
     "dev:electron": "wait-on tcp:5173 && cross-env NODE_ENV=development electron .",
     "start": "npm run dev",
-    "test:tools": "node --test electron/tool-registry.test.js src/lib/toolSummary.test.js",
+    "test:tools": "node --test electron/tool-registry.test.js src/lib/toolSummary.test.js engine/setup.test.js",
     "build:vite": "vite build",
     "build": "npm run build:vite && electron-builder",
     "preview": "vite preview"

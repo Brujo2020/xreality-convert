@@ -17,8 +17,21 @@ PY
 }
 
 find_python() {
-  for candidate in python3.11 python3.12; do
-    if command -v "$candidate" >/dev/null && python_supports_mlx "$candidate"; then
+  local -a candidates=(
+    "${OIS_PYTHON_BIN:-}"
+    "${HOME:-}/.local/bin/python3.11"
+    "${HOME:-}/.local/bin/python3.12"
+    /opt/homebrew/opt/python@3.11/bin/python3.11
+    /opt/homebrew/opt/python@3.12/bin/python3.12
+    /usr/local/opt/python@3.11/bin/python3.11
+    /usr/local/opt/python@3.12/bin/python3.12
+    /Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11
+    /Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12
+    python3.11
+    python3.12
+  )
+  for candidate in "${candidates[@]}"; do
+    if [[ -n "$candidate" ]] && command -v "$candidate" >/dev/null && python_supports_mlx "$candidate"; then
       echo "$candidate"
       return 0
     fi
@@ -42,6 +55,11 @@ Python 3.11 o 3.12 no está disponible en este equipo.
 Instala Python 3.11 o 3.12 y vuelve a intentar la instalación del motor 3D.
 EOF
   exit 1
+fi
+
+if [[ "${1:-}" == "--preflight" ]]; then
+  echo "$PYTHON_BIN"
+  exit 0
 fi
 
 rm -rf "$RUNTIME"

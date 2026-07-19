@@ -103,6 +103,14 @@ Instalación esperada:
 2. Ejecuta el instalador integrado de la app.
 3. La app recrea el entorno si detecta un venv incompatible.
 
+La app busca Python aunque se abra desde Finder: instalaciones de Homebrew en
+Apple Silicon o Intel, Python.org y `~/.local/bin`. Para comprobarlo sin instalar
+dependencias:
+
+```sh
+/Applications/Xreality\ Convert.app/Contents/Resources/app.asar.unpacked/engine/setup.sh --preflight
+```
+
 Si el servidor ya existe en el equipo, la app intenta arrancarlo automáticamente al abrirse.
 
 ### 10. Resolución de problemas
@@ -216,6 +224,14 @@ Expected setup:
 1. Make sure Python 3.11 or 3.12 is installed.
 2. Run the built-in installer from the app.
 3. The app recreates the environment if it detects an incompatible venv.
+
+The app finds Python even when launched from Finder: Homebrew paths on Apple
+Silicon or Intel, Python.org, and `~/.local/bin`. To verify discovery without
+installing dependencies:
+
+```sh
+/Applications/Xreality\ Convert.app/Contents/Resources/app.asar.unpacked/engine/setup.sh --preflight
+```
 
 If the server already exists on the machine, the app tries to start it automatically on launch.
 
