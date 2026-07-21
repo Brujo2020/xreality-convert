@@ -75,6 +75,9 @@ contextBridge.exposeInMainWorld('hunyuan', {
   // Convert a generated GLB to a printable STL -> { ok, stl_path, dims_mm, watertight }
   convertStl: (args) => ipcRenderer.invoke('hunyuan:convertStl', args),
 
+  // Post-process an existing shape-only GLB with Hunyuan Paint.
+  textureGlb: (args) => ipcRenderer.invoke('hunyuan:textureGlb', args),
+
   // Read a cached/saved GLB back as base64 (for gallery re-display).
   readGlb: (filePath) => ipcRenderer.invoke('hunyuan:readGlb', filePath),
 

@@ -2,15 +2,39 @@ import React, { useState } from 'react';
 import XrProductionPanel from './XrProductionPanel.jsx';
 import UseCasePicker from './UseCasePicker.jsx';
 import { MODEL_CATEGORIES } from '../lib/modelCategories.js';
+import { XR_PROFILES } from '../lib/xrProfiles.js';
+import { getControlStatus } from '../lib/uiStatus.js';
+import { applyLowPolySkill, restoreCategoryDelivery } from '../lib/lowPolySkill.js';
 
-function Slider({ label, value, min, max, step, onChange, suffix = '' }) {
+const CONTROL_BADGES = {
+  recommended: ['Recomendado', 'border-cyan-300/15 bg-cyan-300/5 text-cyan-200'],
+  modified: ['Modificado', 'border-amber-300/15 bg-amber-300/5 text-amber-200'],
+  out: ['Fuera de rango', 'border-rose-300/15 bg-rose-300/5 text-rose-200'],
+};
+
+function ControlBadge({ status }) {
+  const [label, className] = CONTROL_BADGES[status] || CONTROL_BADGES.modified;
+  return <span className={`rounded-md border px-2 py-0.5 font-mono text-[7px] uppercase tracking-wider ${className}`}>{label}</span>;
+}
+
+function ResetButton({ children = 'Restaurar', disabled, onClick }) {
+  return (
+    <button
+      disabled={disabled}
+      onClick={onClick}
+      className="rounded-lg border border-sky-300/15 bg-sky-300/5 px-2 py-1 text-[9px] font-semibold text-sky-100 transition hover:bg-sky-300/10 disabled:opacity-40"
+    >
+      {children}
+    </button>
+  );
+}
+
+function Slider({ label, value, min, max, step, onChange, suffix = '', status }) {
   return (
     <label className="block">
       <span className="mb-2 flex items-center justify-between text-[11px] text-slate-400">
-        {label}
-        <b className="rounded-md border border-sky-400/15 bg-sky-400/5 px-2 py-0.5 font-mono font-medium text-sky-100">
-          {value}{suffix}
-        </b>
+        <span className="flex items-center gap-2">{label}{status && <ControlBadge status={status} />}</span>
+        <b className="rounded-md border border-sky-400/15 bg-sky-400/5 px-2 py-0.5 font-mono font-medium text-sky-100">{value}{suffix}</b>
       </span>
       <input type="range" className="slider-accent w-full" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} />
     </label>
@@ -19,7 +43,7 @@ function Slider({ label, value, min, max, step, onChange, suffix = '' }) {
 
 const MODES = [
   { id: 'image', step: '01', label: 'Crear imagen', hint: 'Referencia visual' },
-  { id: 'stl', step: '02', label: 'Texto → 3D', hint: 'Geometría técnica' },
+  { id: 'stl', step: '02', label: 'Texto → 3D', hint: 'FLUX + Hunyuan3D' },
   { id: 'image3d', step: '03', label: 'Imagen → 3D', hint: 'Reconstrucción MLX' },
 ];
 
@@ -45,15 +69,130 @@ function ModeSelector({ mode, setMode, disabled }) {
   );
 }
 
-function Section({ eyebrow, title, children }) {
+function Section({ eyebrow, title, action, children }) {
   return (
     <section className="glass-card rounded-2xl p-4">
-      <div className="mb-3">
-        <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-sky-400/70">{eyebrow}</p>
-        <h2 className="mt-1 text-sm font-semibold tracking-tight text-slate-100">{title}</h2>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-sky-400/70">{eyebrow}</p>
+          <h2 className="mt-1 text-sm font-semibold tracking-tight text-slate-100">{title}</h2>
+        </div>
+        {action}
       </div>
       {children}
     </section>
+  );
+}
+
+function TexturePbrControl({ asset, setAsset, disabled }) {
+  const setTexture = (textureSize) => {
+    setAsset((current) => ({
+      ...current,
+      texture: textureSize !== 'Sin textura',
+      textureSize,
+    }));
+  };
+  const options = [
+    ['Sin textura', 'Shape gris'],
+    ['1K', 'PBR rapido'],
+    ['2K', 'PBR final'],
+  ];
+  return (
+    <Section eyebrow="Material" title="Texturizado PBR">
+      <div className="grid grid-cols-3 gap-1.5 rounded-xl border border-white/5 bg-black/15 p-1.5">
+        {options.map(([id, label]) => (
+          <button
+            key={id}
+            disabled={disabled}
+            onClick={() => setTexture(id)}
+            className={`rounded-lg px-2 py-2 text-center transition ${
+              asset.textureSize === id
+                ? 'bg-cyan-300/12 text-white ring-1 ring-cyan-300/35'
+                : 'text-slate-500 hover:bg-white/5 hover:text-slate-200'
+            }`}
+          >
+            <span className="block text-[10px] font-semibold">{id}</span>
+            <span className="mt-0.5 block text-[7px] text-slate-500">{label}</span>
+          </button>
+        ))}
+      </div>
+      <div className={`mt-2 rounded-xl border px-3 py-2 ${asset.texture ? 'border-cyan-300/20 bg-cyan-300/5' : 'border-amber-300/15 bg-amber-300/5'}`}>
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[10px] font-medium text-slate-200">{asset.texture ? 'Paint MLX se ejecutara en el proximo render' : 'Salida shape-only: material gris'}</span>
+          <span className="font-mono text-[8px] uppercase tracking-wider text-cyan-200">{asset.texture ? `${asset.textureSize} activo` : 'gris'}</span>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function LowPolyControl({ asset, categoryId, categoryDefaults, setAsset, setSteps3d, disabled }) {
+  const lowPoly = asset.profile === 'lowpoly';
+  const toggle = () => {
+    if (!lowPoly) {
+      setAsset((current) => applyLowPolySkill(current));
+      setSteps3d(XR_PROFILES.lowpoly.steps);
+      return;
+    }
+    setAsset((current) => restoreCategoryDelivery(categoryId, current));
+    setSteps3d(categoryDefaults.steps);
+  };
+  return (
+    <label className={`flex cursor-pointer items-center justify-between gap-3 rounded-2xl border px-4 py-3 transition ${lowPoly ? 'border-lime-300/25 bg-lime-300/10 text-lime-50' : 'border-white/5 bg-black/15 text-slate-300 hover:border-lime-300/20'}`}>
+      <div>
+        <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-lime-300/80">Skill de entrega</p>
+        <p className="mt-1 text-sm font-semibold">Low Poly</p>
+        <p className="mt-0.5 text-[10px] text-slate-500">12K caras · octree 128 · decimation agresiva controlada</p>
+      </div>
+      <input
+        type="checkbox"
+        checked={lowPoly}
+        disabled={disabled}
+        onChange={toggle}
+        className="h-5 w-5 accent-lime-300"
+      />
+    </label>
+  );
+}
+
+function ConfigModeSelector({ value, onChange, disabled }) {
+  return (
+    <div className="grid grid-cols-2 gap-1.5 rounded-2xl border border-white/5 bg-black/20 p-1.5">
+      {[
+        ['essential', 'Esencial', 'Recomendado'],
+        ['expert', 'Experto', 'Control total'],
+      ].map(([id, label, hint]) => (
+        <button
+          key={id}
+          disabled={disabled}
+          onClick={() => onChange(id)}
+          className={`rounded-xl px-3 py-2 text-left transition ${value === id ? 'bg-cyan-300/12 text-white ring-1 ring-cyan-300/30' : 'text-slate-500 hover:bg-white/5 hover:text-slate-200'}`}
+        >
+          <span className="block text-[10px] font-semibold">{label}</span>
+          <span className="mt-0.5 block font-mono text-[7px] uppercase tracking-wider text-slate-500">{hint}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function PipelinePlan({ steps }) {
+  const styles = {
+    done: 'border-cyan-300/25 bg-cyan-300/10 text-cyan-100',
+    active: 'border-amber-300/25 bg-amber-300/10 text-amber-100',
+    pending: 'border-white/5 bg-black/15 text-slate-500',
+  };
+  return (
+    <Section eyebrow="Plan de ejecución" title="Ruta viva">
+      <div className="grid grid-cols-2 gap-1.5">
+        {steps.map(([id, label, state], index) => (
+          <div key={id} className={`min-h-[48px] rounded-xl border p-2 ${styles[state] || styles.pending}`}>
+            <span className="font-mono text-[8px] uppercase tracking-wider opacity-70">{String(index + 1).padStart(2, '0')}</span>
+            <span className="mt-1 block text-[10px] font-semibold leading-tight">{label}</span>
+          </div>
+        ))}
+      </div>
+    </Section>
   );
 }
 
@@ -82,28 +221,59 @@ function CategorySelector({ value, onChange, disabled }) {
 export default function PromptPanel(props) {
   const {
     connected, useCase, onSelectUseCase, modelCategory, onSelectModelCategory, mode, setMode, imageModel, imageModels, setImageModel,
+    configMode, setConfigMode, manualOverrides, onResetRecommendations, onResetRecommendationSection, personalPresets, onSavePersonalPreset, onApplyPersonalPreset, executionPlan, deliveryEstimate,
     imageModelAvailable, installingModel, onInstallImageModel, stlModels, stlModel, setStlModel, prompt, setPrompt,
     params, setParams, image3dInput, onPickImage, onDropImage, steps3d, setSteps3d, guidance3d, setGuidance3d,
-    backgroundMode, setBackgroundMode, subjectPadding, setSubjectPadding, asset,
-    setAsset, analysis, analysisLoading, hunyuanUp, installingEngine, onInstallEngine, generating, progress,
+    backgroundMode, setBackgroundMode, subjectPadding, setSubjectPadding, pivot, setPivot, pivotCustom, setPivotCustom, upAxis, setUpAxis, units, setUnits, asset,
+    setAsset, analysis, analysisLoading, hunyuanUp, hunyuanHealth, installingEngine, onInstallEngine, generating, progress,
     onGenerate, onCancel, randomSeed,
   } = props;
   const [advanced, setAdvanced] = useState(false);
   const [imageInfo, setImageInfo] = useState(null);
+  const [presetName, setPresetName] = useState('');
   const update = (key, value) => setParams((current) => ({ ...current, [key]: value }));
   const processing = generating || installingEngine || installingModel;
   const blocked = mode === 'image3d'
     ? !hunyuanUp || !image3dInput
-    : !connected || (mode === 'image' ? !imageModelAvailable : !stlModels.length);
+    : mode === 'stl'
+      ? !connected || !imageModelAvailable || !hunyuanUp
+      : !connected || !imageModelAvailable;
 
   const actionLabel = mode === 'image3d'
     ? 'Construir activo 3D'
     : mode === 'stl'
     ? 'Generar malla 3D'
     : 'Generar imagen';
+  const queue = hunyuanHealth?.queue;
+  const queueActive = Boolean(queue?.active_job_id);
+  const queuePending = Array.isArray(queue?.pending) ? queue.pending.length : 0;
+  const hunyuanDegraded = Boolean(hunyuanHealth?.degraded);
+  const hunyuanStatus = hunyuanDegraded ? 'Degradado' : hunyuanUp ? 'Disponible' : hunyuanHealth?.error ? 'Error' : 'Preparando';
+  const hunyuanDetail = hunyuanHealth?.error
+    ? 'Error de carga'
+    : queueActive
+      ? `${queuePending ? 'Activo + pendiente' : 'Job activo'}`
+      : hunyuanHealth?.model_loaded
+        ? 'Modelo en memoria'
+        : hunyuanHealth?.ready
+          ? 'Motor listo'
+          : 'Motor no instalado';
+  const overrideCount = manualOverrides?.size || 0;
+  const hasOverride = (key) => manualOverrides?.has?.(key);
+  const hasAnyOverride = (keys) => keys.some((key) => hasOverride(key));
+  const expertMode = configMode === 'expert';
+  const savePreset = () => {
+    if (onSavePersonalPreset(presetName)) setPresetName('');
+  };
+  const categoryDefaults = MODEL_CATEGORIES[modelCategory];
+  const backgroundStatus = getControlStatus(backgroundMode, categoryDefaults.backgroundMode);
+  const stepsStatus = getControlStatus(steps3d, categoryDefaults.steps, { min: 10, max: 60 });
+  const guidanceStatus = getControlStatus(guidance3d, categoryDefaults.guidance, { min: 1, max: 12, tolerance: 0.01 });
+  const paddingStatus = getControlStatus(subjectPadding, categoryDefaults.padding, { min: 0.02, max: 0.4, tolerance: 0.001 });
+  const facesStatus = getControlStatus(asset.targetFaces, categoryDefaults.targetFaces, { min: 1000, max: 500000 });
 
   return (
-    <div className="scroll-dark flex h-full flex-col gap-4 overflow-y-auto px-4 pb-5 pt-4">
+    <div className="scroll-dark flex h-full flex-col gap-3 overflow-y-auto px-3 pb-4 pt-3 xl:gap-4 xl:px-4 xl:pb-5 xl:pt-4">
       <div className="px-1">
         <div className="mb-3 flex items-center justify-between">
           <div>
@@ -116,8 +286,31 @@ export default function PromptPanel(props) {
       </div>
 
       <UseCasePicker value={useCase} onChange={onSelectUseCase} disabled={processing} />
+      <ConfigModeSelector value={configMode} onChange={setConfigMode} disabled={processing} />
+      {overrideCount > 0 && (
+        <div className="rounded-xl border border-amber-300/15 bg-amber-300/5 px-3 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-mono text-[8px] uppercase tracking-wider text-amber-200">{overrideCount} ajustes personalizados</span>
+            <button disabled={processing} onClick={onResetRecommendations} className="rounded-lg border border-amber-200/15 px-2 py-1 text-[9px] font-semibold text-amber-100 hover:bg-amber-200/10">Restaurar todo</button>
+          </div>
+        </div>
+      )}
+      {(mode === 'image3d' || mode === 'stl') && (
+        <LowPolyControl
+          asset={asset}
+          categoryId={modelCategory}
+          categoryDefaults={categoryDefaults}
+          setAsset={setAsset}
+          setSteps3d={setSteps3d}
+          disabled={processing}
+        />
+      )}
+      {(mode === 'image3d' || mode === 'stl') && (
+        <TexturePbrControl asset={asset} setAsset={setAsset} disabled={processing} />
+      )}
+      <PipelinePlan steps={executionPlan || []} />
 
-      <Section eyebrow="Fuente" title={mode === 'image3d' ? 'Motor de reconstrucción' : mode === 'image' ? 'Modelo generativo' : 'Modelo de geometría'}>
+      <Section eyebrow="Fuente" title={mode === 'image3d' ? 'Motor de reconstrucción' : mode === 'image' ? 'Modelo generativo' : 'Pipeline de modelado'}>
         {mode === 'image' && (
           <>
             <select value={imageModel} onChange={(event) => setImageModel(event.target.value)} className="field-modern" disabled={processing}>
@@ -128,19 +321,30 @@ export default function PromptPanel(props) {
           </>
         )}
         {mode === 'stl' && (
-          <select value={stlModel} onChange={(event) => setStlModel(event.target.value)} className="field-modern" disabled={processing}>
-            {!stlModels.length && <option>Sin modelo disponible</option>}
-            {stlModels.map((model) => <option key={model}>{model}</option>)}
-          </select>
+          <div className="space-y-2">
+            <div className="rounded-xl border border-white/5 bg-black/15 px-3 py-2.5">
+              <span className="font-mono text-[8px] uppercase tracking-wider text-slate-500">Director de referencia</span>
+              <strong className="mt-1 block text-xs text-slate-100">{imageModel}</strong>
+            </div>
+            <div className={`rounded-xl border px-3 py-2.5 ${hunyuanUp ? 'border-cyan-400/20 bg-cyan-400/5' : 'border-amber-400/20 bg-amber-400/5'}`}>
+              <span className="font-mono text-[8px] uppercase tracking-wider text-slate-500">Geometría real</span>
+              <strong className="mt-1 block text-xs text-slate-100">Hunyuan3D 2.1 · Apple MLX</strong>
+            </div>
+            {!hunyuanUp && !installingEngine && <button onClick={onInstallEngine} className="w-full rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white">Inicializar motor 3D</button>}
+          </div>
         )}
         {mode === 'image3d' && (
-          <div className={`rounded-xl border p-3 ${hunyuanUp ? 'border-cyan-400/20 bg-cyan-400/5' : 'border-amber-400/20 bg-amber-400/5'}`}>
+          <div className={`rounded-xl border p-3 ${hunyuanDegraded ? 'border-amber-400/25 bg-amber-400/5' : hunyuanUp ? 'border-cyan-400/20 bg-cyan-400/5' : 'border-amber-400/20 bg-amber-400/5'}`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className={`h-2.5 w-2.5 rounded-full ${hunyuanUp ? 'bg-cyan-400 shadow-[0_0_14px_#52d7ff]' : 'bg-amber-400'}`} />
+                <span className={`h-2.5 w-2.5 rounded-full ${hunyuanDegraded ? 'bg-amber-400' : hunyuanUp ? 'bg-cyan-400 shadow-[0_0_14px_#52d7ff]' : 'bg-amber-400'}`} />
                 <span className="text-xs font-medium text-slate-100">Hunyuan3D · Apple MLX</span>
               </div>
-              <span className="font-mono text-[9px] uppercase tracking-wider text-slate-400">{hunyuanUp ? 'Disponible' : 'Preparando'}</span>
+              <span className="font-mono text-[9px] uppercase tracking-wider text-slate-400">{hunyuanStatus}</span>
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-2 font-mono text-[8px] uppercase tracking-wider text-slate-500">
+              <span>{hunyuanDetail}</span>
+              {queueActive && <span>{queuePending}/{queue?.max_pending || 1} en cola</span>}
             </div>
             {!hunyuanUp && !installingEngine && <button onClick={onInstallEngine} className="mt-3 w-full rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-blue-900/30">Inicializar motor</button>}
           </div>
@@ -200,10 +404,14 @@ export default function PromptPanel(props) {
               )}
             </div>
             {analysis?.preview_base64 && image3dInput && (
-              <div className="mt-3 grid grid-cols-2 gap-2">
+              <div className="mt-3 grid grid-cols-3 gap-2">
                 <figure className="rounded-xl border border-white/5 bg-black/20 p-2">
                   <figcaption className="mb-2 font-mono text-[8px] uppercase tracking-[0.16em] text-slate-500">Original</figcaption>
                   <img src={image3dInput.dataUrl} alt="Referencia original" className="h-28 w-full rounded-lg object-contain" />
+                </figure>
+                <figure className="rounded-xl border border-white/5 bg-black/20 p-2">
+                  <figcaption className="mb-2 font-mono text-[8px] uppercase tracking-[0.16em] text-slate-500">Máscara</figcaption>
+                  <img src={`data:image/png;base64,${analysis.mask_base64 || analysis.preview_base64}`} alt="Máscara de sujeto" className="h-28 w-full rounded-lg object-contain" />
                 </figure>
                 <figure className="rounded-xl border border-cyan-300/15 bg-cyan-300/[0.04] p-2">
                   <figcaption className="mb-2 font-mono text-[8px] uppercase tracking-[0.16em] text-cyan-200/70">Preparada</figcaption>
@@ -238,7 +446,14 @@ export default function PromptPanel(props) {
       {mode === 'image3d' && <CategorySelector value={modelCategory} onChange={onSelectModelCategory} disabled={processing} />}
 
       {mode === 'image3d' && (
-        <Section eyebrow="Preparación inteligente" title="Fondo y sujeto">
+        <Section
+          eyebrow="Preparación inteligente"
+          title="Fondo y sujeto"
+          action={hasAnyOverride(['background', 'padding']) && (
+            <ResetButton disabled={processing} onClick={() => onResetRecommendationSection('preparation')} />
+          )}
+        >
+          <div className="mb-2 flex justify-end"><ControlBadge status={backgroundStatus} /></div>
           <div className="grid grid-cols-3 gap-1.5 rounded-xl border border-white/5 bg-black/15 p-1.5">
             {[
               ['auto', 'Automático', 'Recomendado'],
@@ -257,11 +472,66 @@ export default function PromptPanel(props) {
         </Section>
       )}
 
-      {(mode === 'image3d' || mode === 'stl') && (
-        <XrProductionPanel asset={asset} setAsset={setAsset} setSteps3d={setSteps3d} disabled={processing} />
+      {mode === 'image3d' && (
+        <Section eyebrow="Estimación" title="Calidad, tiempo y memoria">
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-xl border border-white/5 bg-black/15 p-2">
+              <span className="font-mono text-[8px] uppercase tracking-wider text-slate-500">Calidad</span>
+              <strong className="mt-1 block text-xs text-slate-100">{deliveryEstimate?.quality || 'Pendiente'}</strong>
+            </div>
+            <div className="rounded-xl border border-white/5 bg-black/15 p-2">
+              <span className="font-mono text-[8px] uppercase tracking-wider text-slate-500">Tiempo</span>
+              <strong className="mt-1 block text-xs text-slate-100">≈ {deliveryEstimate?.minutes || 9} min</strong>
+            </div>
+            <div className="rounded-xl border border-white/5 bg-black/15 p-2">
+              <span className="font-mono text-[8px] uppercase tracking-wider text-slate-500">Memoria</span>
+              <strong className="mt-1 block text-xs text-slate-100">≈ {deliveryEstimate?.memoryGb || 13} GB</strong>
+            </div>
+          </div>
+          <div className={`mt-2 rounded-xl border px-3 py-2 ${asset.texture ? 'border-cyan-300/20 bg-cyan-300/5' : 'border-white/5 bg-black/15'}`}>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-medium text-slate-200">Textura PBR para paso final</span>
+              <span className="font-mono text-[8px] uppercase tracking-wider text-cyan-200">{asset.texture ? `${asset.textureSize} solicitada` : 'Sin textura'}</span>
+            </div>
+          </div>
+        </Section>
       )}
 
-      <section className="overflow-hidden rounded-2xl border border-white/5 bg-black/10">
+      {(mode === 'image3d' || mode === 'stl') && (
+        <XrProductionPanel
+          asset={asset}
+          recommended={categoryDefaults}
+          setAsset={setAsset}
+          setSteps3d={setSteps3d}
+          disabled={processing}
+          onReset={hasAnyOverride(['asset', 'steps']) ? () => onResetRecommendationSection('asset') : null}
+        />
+      )}
+
+      {mode === 'image3d' && (
+        <Section eyebrow="Presets personales" title="Guardar y reutilizar">
+          <div className="flex gap-2">
+            <input
+              value={presetName}
+              onChange={(event) => setPresetName(event.target.value)}
+              disabled={processing}
+              placeholder="Nombre del preset"
+              className="field-modern min-w-0 flex-1 !py-2 text-xs"
+            />
+            <button disabled={processing || !presetName.trim()} onClick={savePreset} className="rounded-xl border border-cyan-300/20 bg-cyan-300/5 px-3 text-[10px] font-semibold text-cyan-100 disabled:opacity-40">Guardar</button>
+          </div>
+          {personalPresets?.length ? (
+            <select disabled={processing} defaultValue="" onChange={(event) => { if (event.target.value) onApplyPersonalPreset(event.target.value); event.target.value = ''; }} className="field-modern mt-2 !py-2 text-xs">
+              <option value="">Aplicar preset guardado…</option>
+              {personalPresets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
+            </select>
+          ) : (
+            <p className="mt-2 text-[10px] text-slate-500">Sin presets guardados todavía.</p>
+          )}
+        </Section>
+      )}
+
+      {expertMode && <section className="overflow-hidden rounded-2xl border border-white/5 bg-black/10">
         <button onClick={() => setAdvanced((current) => !current)} className="flex w-full items-center justify-between px-4 py-3 text-xs font-medium text-slate-300">
           <span>Controles avanzados</span>
           <span className={`text-sky-400 transition-transform ${advanced ? 'rotate-45' : ''}`}>＋</span>
@@ -278,12 +548,65 @@ export default function PromptPanel(props) {
             )}
             {mode === 'image3d' && (
               <>
-                <Slider label="Pasos de reconstrucción" value={steps3d} min={10} max={50} step={5} onChange={setSteps3d} />
-                <Slider label="Resolución de malla" value={asset.octree} min={96} max={256} step={32} onChange={(value) => setAsset((current) => ({ ...current, octree: value }))} />
-                <Slider label="Fidelidad al sujeto" value={guidance3d} min={1} max={12} step={0.5} onChange={setGuidance3d} />
-                <Slider label="Margen alrededor" value={Math.round(subjectPadding * 100)} min={2} max={40} step={1} suffix="%" onChange={(value) => setSubjectPadding(value / 100)} />
-                <Slider label="Presupuesto de caras" value={asset.targetFaces} min={10000} max={200000} step={5000} onChange={(value) => setAsset((current) => ({ ...current, targetFaces: value }))} />
-                <button onClick={() => onSelectModelCategory(modelCategory)} className="rounded-xl border border-sky-400/20 bg-sky-400/5 px-3 py-2.5 text-[10px] font-semibold text-sky-200 hover:bg-sky-400/10">Restaurar recomendación de {MODEL_CATEGORIES[modelCategory].label}</button>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-slate-500">Reconstrucción</span>
+                  {hasAnyOverride(['steps', 'guidance', 'asset']) && (
+                    <ResetButton disabled={processing} onClick={() => onResetRecommendationSection('reconstruction')} />
+                  )}
+                </div>
+                <Slider label="Pasos de reconstrucción" value={steps3d} min={10} max={50} step={5} status={stepsStatus} onChange={setSteps3d} />
+                <Slider label="Resolución de malla" value={asset.octree} min={96} max={256} step={32} status={getControlStatus(asset.octree, categoryDefaults.octree, { min: 96, max: 256 })} onChange={(value) => setAsset((current) => ({ ...current, octree: value }))} />
+                <Slider label="Fidelidad al sujeto" value={guidance3d} min={1} max={12} step={0.5} status={guidanceStatus} onChange={setGuidance3d} />
+                <Slider label="Margen alrededor" value={Math.round(subjectPadding * 100)} min={2} max={40} step={1} suffix="%" status={paddingStatus} onChange={(value) => setSubjectPadding(value / 100)} />
+                <Slider label="Presupuesto de caras" value={asset.targetFaces} min={10000} max={200000} step={5000} status={facesStatus} onChange={(value) => setAsset((current) => ({ ...current, targetFaces: value }))} />
+                <div className="flex items-center justify-between gap-2 border-t border-white/5 pt-3">
+                  <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-slate-500">Entrega</span>
+                  {hasAnyOverride(['delivery', 'asset']) && (
+                    <ResetButton disabled={processing} onClick={() => onResetRecommendationSection('delivery')} />
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-500">
+                    Pivot
+                    <select value={pivot} onChange={(event) => setPivot(event.target.value)} className="field-modern mt-1.5 !py-2">
+                      <option value="center">Centro</option>
+                      <option value="base">Base</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                  </label>
+                  <label className="text-[9px] uppercase tracking-wider text-slate-500">
+                    Eje up
+                    <select value={upAxis} onChange={(event) => setUpAxis(event.target.value)} className="field-modern mt-1.5 !py-2">
+                      <option value="y">Y-up</option>
+                      <option value="z">Z-up</option>
+                    </select>
+                  </label>
+                  <label className="text-[9px] uppercase tracking-wider text-slate-500">
+                    Unidad
+                    <select value={units} onChange={(event) => setUnits(event.target.value)} className="field-modern mt-1.5 !py-2">
+                      <option value="m">m</option>
+                      <option value="cm">cm</option>
+                      <option value="mm">mm</option>
+                    </select>
+                  </label>
+                </div>
+                {pivot === 'custom' && (
+                  <div className="grid grid-cols-3 gap-2">
+                    {['X', 'Y', 'Z'].map((axis, index) => (
+                      <label key={axis} className="text-[9px] uppercase tracking-wider text-slate-500">
+                        Pivot {axis}
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={pivotCustom[index]}
+                          onChange={(event) => setPivotCustom(index, Number(event.target.value) || 0)}
+                          className="field-modern mt-1.5 !py-2"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <button onClick={onResetRecommendations} className="rounded-xl border border-sky-400/20 bg-sky-400/5 px-3 py-2.5 text-[10px] font-semibold text-sky-200 hover:bg-sky-400/10">Restaurar todo a {MODEL_CATEGORIES[modelCategory].label}</button>
               </>
             )}
             {mode !== 'image3d' && (
@@ -297,7 +620,7 @@ export default function PromptPanel(props) {
             )}
           </div>
         )}
-      </section>
+      </section>}
 
       <div className="mt-auto pt-1">
         {processing ? (

@@ -30,7 +30,7 @@ export default function GltfViewer({ glbBase64 }) {
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.01, 5000);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.setSize(width, height);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     mount.appendChild(renderer.domElement);
@@ -44,11 +44,12 @@ export default function GltfViewer({ glbBase64 }) {
     scene.add(fill);
 
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
+    controls.enableDamping = false;
 
     let raf;
     let disposed = false;
+    const renderOnce = () => renderer.render(scene, camera);
+    controls.addEventListener('change', renderOnce);
 
     const loader = new GLTFLoader();
     loader.parse(
@@ -77,18 +78,12 @@ export default function GltfViewer({ glbBase64 }) {
         const grid = new THREE.GridHelper(radius * 4, 20, 0x1689e8, 0x0b2543);
         grid.position.y = -radius;
         scene.add(grid);
+        renderOnce();
       },
       (err) => {
         console.error('GLB parse error', err);
       }
     );
-
-    const animate = () => {
-      raf = requestAnimationFrame(animate);
-      controls.update();
-      renderer.render(scene, camera);
-    };
-    animate();
 
     const onResize = () => {
       const w = mount.clientWidth;
@@ -97,6 +92,7 @@ export default function GltfViewer({ glbBase64 }) {
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
+      renderOnce();
     };
     const ro = new ResizeObserver(onResize);
     ro.observe(mount);
@@ -105,7 +101,18 @@ export default function GltfViewer({ glbBase64 }) {
       disposed = true;
       cancelAnimationFrame(raf);
       ro.disconnect();
+      controls.removeEventListener('change', renderOnce);
       controls.dispose();
+      scene.traverse((object) => {
+        object.geometry?.dispose?.();
+        const materials = Array.isArray(object.material) ? object.material : [object.material];
+        materials.filter(Boolean).forEach((material) => {
+          Object.values(material).forEach((value) => {
+            if (value?.isTexture) value.dispose();
+          });
+          material.dispose?.();
+        });
+      });
       renderer.dispose();
       if (renderer.domElement.parentNode === mount) {
         mount.removeChild(renderer.domElement);

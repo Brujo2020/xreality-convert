@@ -6,14 +6,22 @@ import Gallery from './components/Gallery.jsx';
 import { XR_PROFILES } from './lib/xrProfiles.js';
 import { USE_CASES } from './lib/useCases.js';
 import { MODEL_CATEGORIES } from './lib/modelCategories.js';
+import { getPipelineState } from './lib/pipelineStates.js';
+import { enrichImagePrompt } from './lib/promptEnrichment.js';
+import { estimateImage3dDelivery } from './lib/deliveryEstimates.js';
+import { assetFilename, buildAssetName } from './lib/assetNaming.js';
 
 const IMAGE_MODEL = 'x/z-image-turbo:latest';
 const PREFERRED_IMAGE_MODELS = ['x/flux2-klein:latest', 'x/flux2-klein', IMAGE_MODEL];
 const MAX_HISTORY = 20;
+const PERSONAL_PRESETS_KEY = 'xrealityConvert.personalPresets.v1';
 
 // Models we prefer for STL code generation, in order. Falls back to the first
 // available text model if none of these are installed.
 const PREFERRED_STL_MODELS = [
+  'oMLX · gemma-4-12b-coder-fable5-composer2.5-4bit',
+  'oMLX · gpt-oss-20b-MXFP4-Q8',
+  'oMLX · qwen3-8b-4bit',
   'qwen3-coder:30b',
   'qwen3-coder:latest',
   'qwen2.5-coder:32b',
@@ -35,7 +43,19 @@ function timestampName(seed, ext) {
 }
 
 // Image generators are filtered out of the STL model list.
-const isImageModel = (name) => /z-image|flux/i.test(name);
+const isImageModel = (name) => !name.startsWith('oMLX · ') && /z-image|flux/i.test(name);
+
+function recommendedAssetForCategory(id) {
+  const category = MODEL_CATEGORIES[id] || MODEL_CATEGORIES.custom;
+  const profile = XR_PROFILES[category.profile] || XR_PROFILES.xreal;
+  return {
+    ...profile,
+    profile: category.profile,
+    octree: category.octree,
+    targetFaces: category.targetFaces,
+    scale: category.scale,
+  };
+}
 
 export default function App() {
   // --- Ollama connection state ---
@@ -51,8 +71,11 @@ export default function App() {
 
   // --- Conversión: texto o imagen hacia un activo 3D ---
   const [mode, setMode] = useState('image3d');
+  const [configMode, setConfigMode] = useState('essential');
   const [useCase, setUseCase] = useState('industrial');
   const [modelCategory, setModelCategory] = useState('industrial');
+  const [manualOverrides, setManualOverrides] = useState(() => new Set());
+  const [personalPresets, setPersonalPresets] = useState([]);
 
   // --- Form state (Texto → 3D) ---
   const [stlModel, setStlModel] = useState('');
@@ -71,10 +94,14 @@ export default function App() {
   const [guidance3d, setGuidance3d] = useState(MODEL_CATEGORIES.industrial.guidance);
   const [backgroundMode, setBackgroundMode] = useState('auto');
   const [subjectPadding, setSubjectPadding] = useState(MODEL_CATEGORIES.industrial.padding);
+  const [pivot, setPivot] = useState('center');
+  const [pivotCustom, setPivotCustom] = useState([0, 0, 0]);
+  const [upAxis, setUpAxis] = useState('y');
+  const [units, setUnits] = useState('m');
   const [stlMm, setStlMm] = useState(60); // target longest-axis size for STL export
-  const [texture3d, setTexture3d] = useState(false); // Stage 2 PBR texture
   const [asset, setAsset] = useState({ profile: 'xreal', ...XR_PROFILES.xreal });
   const [hunyuanUp, setHunyuanUp] = useState(false);
+  const [hunyuanHealth, setHunyuanHealth] = useState(null);
   const [installingEngine, setInstallingEngine] = useState(false);
   const [installingModel, setInstallingModel] = useState(false);
 
@@ -95,8 +122,200 @@ export default function App() {
   const hasCheckedLocalTools = useRef(false);
   const processing = generating || installingEngine || installingModel;
 
+  const resetOverrides = useCallback(() => setManualOverrides(new Set()), []);
+  const clearOverrideKeys = useCallback((keys) => {
+    setManualOverrides((current) => {
+      const next = new Set(current);
+      keys.forEach((key) => next.delete(key));
+      return next;
+    });
+  }, []);
+  const markOverride = useCallback((key) => {
+    setManualOverrides((current) => {
+      const next = new Set(current);
+      next.add(key);
+      return next;
+    });
+  }, []);
+
+  const setManualBackgroundMode = useCallback((value) => {
+    markOverride('background');
+    setBackgroundMode(value);
+  }, [markOverride]);
+
+  const setManualSteps3d = useCallback((value) => {
+    markOverride('steps');
+    setSteps3d(value);
+  }, [markOverride]);
+
+  const setManualGuidance3d = useCallback((value) => {
+    markOverride('guidance');
+    setGuidance3d(value);
+  }, [markOverride]);
+
+  const setManualSubjectPadding = useCallback((value) => {
+    markOverride('padding');
+    setSubjectPadding(value);
+  }, [markOverride]);
+
+  const setManualPivot = useCallback((value) => {
+    markOverride('delivery');
+    setPivot(value);
+  }, [markOverride]);
+
+  const setManualPivotCustom = useCallback((index, value) => {
+    markOverride('delivery');
+    setPivotCustom((current) => current.map((item, itemIndex) => (itemIndex === index ? value : item)));
+  }, [markOverride]);
+
+  const setManualUpAxis = useCallback((value) => {
+    markOverride('delivery');
+    setUpAxis(value);
+  }, [markOverride]);
+
+  const setManualUnits = useCallback((value) => {
+    markOverride('delivery');
+    setUnits(value);
+  }, [markOverride]);
+
+  const setManualAsset = useCallback((updater) => {
+    markOverride('asset');
+    setAsset(updater);
+  }, [markOverride]);
+
+  const setManualParams = useCallback((updater) => {
+    markOverride('imageParams');
+    setParams(updater);
+  }, [markOverride]);
+
+  const applyRecommendedCategory = useCallback((id, { clearOverrides = true } = {}) => {
+    const category = MODEL_CATEGORIES[id];
+    setModelCategory(id);
+    setAsset(recommendedAssetForCategory(id));
+    setSteps3d(category.steps);
+    setGuidance3d(category.guidance);
+    setBackgroundMode(category.backgroundMode);
+    setSubjectPadding(category.padding);
+    if (clearOverrides) resetOverrides();
+    setError(null);
+  }, [resetOverrides]);
+
+  const resetRecommendationSection = useCallback((section) => {
+    const category = MODEL_CATEGORIES[modelCategory] || MODEL_CATEGORIES.custom;
+    if (section === 'preparation') {
+      setBackgroundMode(category.backgroundMode);
+      setSubjectPadding(category.padding);
+      clearOverrideKeys(['background', 'padding']);
+    }
+    if (section === 'reconstruction') {
+      setSteps3d(category.steps);
+      setGuidance3d(category.guidance);
+      setAsset((current) => ({
+        ...current,
+        octree: category.octree,
+        targetFaces: category.targetFaces,
+      }));
+      clearOverrideKeys(['steps', 'guidance', 'asset']);
+    }
+    if (section === 'delivery') {
+      setPivot('center');
+      setPivotCustom([0, 0, 0]);
+      setUpAxis('y');
+      setUnits('m');
+      setAsset((current) => ({ ...current, scale: category.scale }));
+      clearOverrideKeys(['delivery', 'asset']);
+    }
+    if (section === 'asset') {
+      setAsset(recommendedAssetForCategory(modelCategory));
+      setSteps3d(category.steps);
+      clearOverrideKeys(['asset', 'steps']);
+    }
+    setError(null);
+  }, [clearOverrideKeys, modelCategory]);
+
+  const persistPersonalPresets = useCallback((items) => {
+    setPersonalPresets(items);
+    try {
+      window.localStorage.setItem(PERSONAL_PRESETS_KEY, JSON.stringify(items));
+    } catch {}
+  }, []);
+
+  const savePersonalPreset = useCallback((name) => {
+    const cleanName = name.trim();
+    if (!cleanName) return false;
+    const preset = {
+      id: `${Date.now()}-${cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+      name: cleanName,
+      mode,
+      category: modelCategory,
+      steps3d,
+      guidance3d,
+      backgroundMode,
+      subjectPadding,
+      pivot,
+      pivotCustom,
+      upAxis,
+      units,
+      asset,
+      params,
+      createdAt: Date.now(),
+    };
+    persistPersonalPresets([preset, ...personalPresets.filter((item) => item.name !== cleanName)].slice(0, 12));
+    return true;
+  }, [asset, backgroundMode, guidance3d, mode, modelCategory, params, persistPersonalPresets, personalPresets, pivot, pivotCustom, steps3d, subjectPadding, units, upAxis]);
+
+  const applyPersonalPreset = useCallback((presetId) => {
+    const preset = personalPresets.find((item) => item.id === presetId);
+    if (!preset) return;
+    setMode(preset.mode || 'image3d');
+    setModelCategory(preset.category || 'custom');
+    setSteps3d(preset.steps3d || 30);
+    setGuidance3d(preset.guidance3d || MODEL_CATEGORIES[preset.category || 'custom'].guidance);
+    setBackgroundMode(preset.backgroundMode || 'auto');
+    setSubjectPadding(preset.subjectPadding || MODEL_CATEGORIES[preset.category || 'custom'].padding);
+    setPivot(preset.pivot || 'center');
+    setPivotCustom(Array.isArray(preset.pivotCustom) ? preset.pivotCustom : [0, 0, 0]);
+    setUpAxis(preset.upAxis || 'y');
+    setUnits(preset.units || 'm');
+    setAsset(preset.asset || { profile: 'xreal', ...XR_PROFILES.xreal });
+    setParams(preset.params || params);
+    resetOverrides();
+    setError(null);
+  }, [params, personalPresets, resetOverrides]);
+
+  const executionPlan = useCallback(() => {
+    if (mode === 'image3d') {
+      return [
+        ['input', 'Entrada', image3dInput ? 'done' : 'active'],
+        ['prepare', 'Preparación', generating && progress.percent < 15 ? 'active' : progress.percent >= 15 ? 'done' : 'pending'],
+        ['engine', 'Motor MLX', generating && progress.percent >= 15 && progress.percent < 82 ? 'active' : progress.percent >= 82 ? 'done' : 'pending'],
+        ['optimize', 'Optimización', generating && progress.percent >= 82 && progress.percent < 94 ? 'active' : progress.percent >= 94 ? 'done' : 'pending'],
+        ['audit', 'Auditoría', result?.type === 'glb' ? 'done' : generating && progress.percent >= 94 ? 'active' : 'pending'],
+        ['export', 'Exportación', result?.type === 'glb' ? 'active' : 'pending'],
+      ];
+    }
+    if (mode === 'stl') {
+      return [
+        ['prompt', 'Dirección 3D', prompt.trim() ? 'done' : 'active'],
+        ['reference', 'Referencia FLUX', generating && progress.percent < 12 ? 'active' : progress.percent >= 12 ? 'done' : 'pending'],
+        ['engine', 'Hunyuan3D MLX', generating && progress.percent >= 12 && progress.percent < 94 ? 'active' : result?.type === 'glb' ? 'done' : 'pending'],
+        ['audit', 'Auditoría GLB', result?.type === 'glb' ? 'done' : generating && progress.percent >= 94 ? 'active' : 'pending'],
+      ];
+    }
+    return [
+      ['prompt', 'Dirección', prompt.trim() ? 'done' : 'active'],
+      ['model', 'Modelo visual', generating ? 'active' : result?.type === 'image' ? 'done' : 'pending'],
+      ['reference', 'Referencia', result?.type === 'image' ? 'done' : 'pending'],
+    ];
+  }, [generating, image3dInput, mode, progress.percent, prompt, result?.type]);
+  const deliveryEstimate = estimateImage3dDelivery({
+    asset,
+    analysis,
+    textureEnabled: asset.texture,
+  });
+
   useEffect(() => {
-    if (!processing || (mode === 'image3d' && generating)) return undefined;
+    if (!processing || ((mode === 'image3d' || mode === 'stl') && generating)) return undefined;
     const startedAt = Date.now();
     const estimatedSeconds = installingEngine
       ? 240
@@ -107,7 +326,7 @@ export default function App() {
         ? 900
         : 480
       : mode === 'stl'
-      ? 150
+      ? 540
       : 60;
     const label = installingEngine
       ? 'Instalando el motor 3D'
@@ -118,7 +337,7 @@ export default function App() {
         ? 'Reconstruyendo y optimizando Low Poly'
         : 'Reconstruyendo el activo 3D'
       : mode === 'stl'
-      ? 'Generando y validando la malla'
+      ? 'Creando referencia y reconstruyendo con Hunyuan3D'
       : 'Generando la imagen de referencia';
     const updateProgress = () => {
       const elapsed = (Date.now() - startedAt) / 1000;
@@ -170,9 +389,16 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    checkStatus();
-    const id = setInterval(checkStatus, 5000);
-    return () => clearInterval(id);
+    const refreshWhenVisible = () => {
+      if (!document.hidden) checkStatus();
+    };
+    refreshWhenVisible();
+    const id = setInterval(refreshWhenVisible, 5000);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
   }, [checkStatus]);
 
   const checkLocalTools = useCallback(async (force = false) => {
@@ -197,14 +423,20 @@ export default function App() {
   useEffect(() => {
     let active = true;
     const ping = async () => {
+      if (document.hidden) return;
       const r = await window.hunyuan.health();
-      if (active) setHunyuanUp(!!r.up);
+      if (active) {
+        setHunyuanUp(!!r.up);
+        setHunyuanHealth(r);
+      }
     };
     ping();
     const id = setInterval(ping, 5000);
+    document.addEventListener('visibilitychange', ping);
     return () => {
       active = false;
       clearInterval(id);
+      document.removeEventListener('visibilitychange', ping);
     };
   }, []);
 
@@ -216,12 +448,22 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    try {
+      const items = JSON.parse(window.localStorage.getItem(PERSONAL_PRESETS_KEY) || '[]');
+      if (Array.isArray(items)) setPersonalPresets(items.slice(0, 12));
+    } catch {
+      setPersonalPresets([]);
+    }
+  }, []);
+
+  useEffect(() => {
     const unsubscribe = window.hunyuan.onProgress?.((payload) => {
       if (!payload) return;
+      const state = getPipelineState(payload.state);
       setProgress((current) => ({
         ...current,
         percent: Number.isFinite(payload.percent) ? payload.percent : current.percent,
-        label: payload.stage || current.label,
+        label: payload.stage || state?.label || current.label,
         remaining: payload.remaining ?? current.remaining,
       }));
     });
@@ -281,6 +523,7 @@ export default function App() {
         steps: steps3d,
         octree: asset.octree,
         texture: asset.texture,
+        textureSize: asset.textureSize,
         targetFaces: asset.targetFaces,
         scale: asset.scale,
         profile: asset.profile,
@@ -288,6 +531,10 @@ export default function App() {
         guidance: guidance3d,
         backgroundMode,
         subjectPadding,
+        pivot,
+        pivotCustom,
+        upAxis,
+        units,
       });
       if (!res.ok) {
         setGenerating(false);
@@ -296,11 +543,20 @@ export default function App() {
       }
       setProgress({ percent: 100, label: 'Activo 3D completado', remaining: 0 });
       setGenerating(false);
+      const createdAt = Date.now();
+      const assetName = buildAssetName({
+        sourceName: image3dInput.name,
+        category: modelCategory,
+        profile: asset.profile,
+        createdAt,
+      });
       const entry = {
-        id: `${Date.now()}-3d`,
+        id: `${createdAt}-3d`,
         type: 'glb',
+        assetName,
         glbBase64: res.glbBase64,
         glbPath: res.glbPath,
+        lodPaths: res.lodPaths,
         faces: res.faces,
         duration: res.duration,
         reportPath: res.reportPath,
@@ -308,10 +564,13 @@ export default function App() {
         qualityScore: res.qualityScore,
         qualityText: res.qualityText,
         steps: steps3d,
-        textured: asset.texture,
+        textured: res.textureApplied,
+        textureRequested: res.textureRequested ?? asset.texture,
+        textureReport: res.textureReport,
+        shapeGlbPath: res.shapeGlbPath,
         profile: asset.profile,
         targetFaces: asset.targetFaces,
-        textureSize: asset.textureSize,
+        textureSize: res.textureSize || asset.textureSize,
         scale: asset.scale,
         prompt: image3dInput.name, // shown as the label
         inputDataUrl: image3dInput.dataUrl,
@@ -319,7 +578,11 @@ export default function App() {
         category: modelCategory,
         guidance: guidance3d,
         backgroundMode,
-        createdAt: Date.now(),
+        pivot: res.pivot || pivot,
+        pivotCustom: res.pivotCustom || pivotCustom,
+        upAxis: res.upAxis || upAxis,
+        units: res.units || units,
+        createdAt,
         filePath: null,
       };
       setResult(entry);
@@ -338,9 +601,10 @@ export default function App() {
     setGenerating(true);
 
     if (mode === 'image') {
+      const enrichedPrompt = enrichImagePrompt(prompt, modelCategory);
       const res = await window.ollama.generate({
         model: imageModel,
-        prompt: prompt.trim(),
+        prompt: enrichedPrompt,
         width: params.width,
         height: params.height,
         steps: params.steps,
@@ -353,53 +617,118 @@ export default function App() {
       }
       setProgress({ percent: 100, label: 'Imagen completada', remaining: 0 });
       setGenerating(false);
-      const entry = { id: `${Date.now()}-${usedSeed}`, type: 'image', image: res.image, prompt: prompt.trim(), model: imageModel, seed: usedSeed, width: params.width, height: params.height, steps: params.steps, duration: res.duration, createdAt: Date.now(), filePath: null };
+      const createdAt = Date.now();
+      const assetName = buildAssetName({
+        prompt: prompt.trim(),
+        category: modelCategory,
+        profile: asset.profile,
+        createdAt,
+      });
+      const entry = { id: `${createdAt}-${usedSeed}`, type: 'image', assetName, image: res.image, prompt: prompt.trim(), enrichedPrompt, category: modelCategory, profile: asset.profile, model: imageModel, seed: usedSeed, width: params.width, height: params.height, steps: params.steps, duration: res.duration, createdAt, filePath: null };
       setResult(entry);
       persistHistory([entry, ...history].slice(0, MAX_HISTORY));
       return;
     }
 
-    // --- Texto → 3D ---
-    if (!stlModel) {
+    // --- Texto → referencia → Hunyuan3D ---
+    if (!imageModelAvailable) {
       setGenerating(false);
-      setError('Selecciona un modelo de código para generar la malla.');
+      setError('Instala o selecciona FLUX para crear la referencia 3D.');
       return;
     }
-    const res = await window.ollama.generateStl({
-      model: stlModel,
-      prompt: prompt.trim(),
+    if (!hunyuanUp) {
+      setGenerating(false);
+      setError('Inicializa Hunyuan3D MLX antes de modelar.');
+      return;
+    }
+    setProgress({ percent: 2, label: 'Creando referencia limpia con FLUX', remaining: null });
+    const enrichedPrompt = enrichImagePrompt(prompt, modelCategory);
+    const reference = await window.ollama.generate({
+      model: imageModel,
+      prompt: enrichedPrompt,
+      width: params.width,
+      height: params.height,
+      steps: params.steps,
       seed: usedSeed,
-      profile: asset.profile,
+    });
+    if (!reference.ok) {
+      setGenerating(false);
+      if (!reference.cancelled) setError(reference.error || 'No fue posible crear la referencia 3D.');
+      return;
+    }
+    setProgress({ percent: 12, label: 'Referencia lista · iniciando Hunyuan3D', remaining: null });
+    const res = await window.hunyuan.generate3D({
+      imageBase64: reference.image,
+      steps: steps3d,
+      octree: asset.octree,
+      texture: asset.texture,
+      textureSize: asset.textureSize,
       targetFaces: asset.targetFaces,
+      scale: asset.scale,
+      profile: asset.profile,
+      category: modelCategory,
+      guidance: guidance3d,
+      backgroundMode: 'remove',
+      subjectPadding,
+      pivot,
+      pivotCustom,
+      upAxis,
+      units,
     });
     if (!res.ok) {
       setGenerating(false);
-      if (!res.cancelled) setError(res.error || 'STL generation failed.');
+      if (!res.cancelled) setError(res.error || 'Hunyuan3D no pudo reconstruir la referencia.');
       return;
     }
-    setProgress({ percent: 100, label: 'Malla completada', remaining: 0 });
+    setProgress({ percent: 100, label: 'Activo 3D completado', remaining: 0 });
     setGenerating(false);
-    const entry = {
-      id: `${Date.now()}-${usedSeed}`,
-      type: 'stl',
-      stl: res.stl, // kept in-memory for the current view only
-      stlPath: res.stlPath, // cached on disk for gallery re-display
-      code: res.code,
+    const createdAt = Date.now();
+    const assetName = buildAssetName({
       prompt: prompt.trim(),
-      model: stlModel,
-      seed: usedSeed,
-      triangles: res.triangles,
-      duration: res.duration,
+      category: modelCategory,
       profile: asset.profile,
+      createdAt,
+    });
+    const entry = {
+      id: `${createdAt}-3d`,
+      type: 'glb',
+      assetName,
+      glbBase64: res.glbBase64,
+      glbPath: res.glbPath,
+      lodPaths: res.lodPaths,
+      faces: res.faces,
+      reportPath: res.reportPath,
+      qualityLevel: res.qualityLevel,
+      qualityScore: res.qualityScore,
+      qualityText: res.qualityText,
+      prompt: prompt.trim(),
+      enrichedPrompt,
+      inputDataUrl: `data:image/png;base64,${reference.image}`,
+      model: 'hunyuan3d-2.1-mlx',
+      referenceModel: imageModel,
+      seed: usedSeed,
+      duration: res.duration,
+      steps: steps3d,
+      textured: res.textureApplied,
+      textureRequested: res.textureRequested ?? asset.texture,
+      textureReport: res.textureReport,
+      shapeGlbPath: res.shapeGlbPath,
+      profile: asset.profile,
+      category: modelCategory,
       targetFaces: asset.targetFaces,
-      textureSize: asset.textureSize,
+      textureSize: res.textureSize || asset.textureSize,
       scale: asset.scale,
-      createdAt: Date.now(),
+      guidance: guidance3d,
+      backgroundMode: 'remove',
+      pivot: res.pivot || pivot,
+      pivotCustom: res.pivotCustom || pivotCustom,
+      upAxis: res.upAxis || upAxis,
+      units: res.units || units,
+      createdAt,
       filePath: null,
     };
     setResult(entry);
-    // Store everything except the heavy inline STL text.
-    const { stl, ...lightEntry } = entry;
+    const { glbBase64, inputDataUrl, ...lightEntry } = entry;
     persistHistory([lightEntry, ...history].slice(0, MAX_HISTORY));
   }, [
     prompt,
@@ -407,6 +736,7 @@ export default function App() {
     params,
     stlModel,
     imageModel,
+    imageModelAvailable,
     image3dInput,
     steps3d,
     asset,
@@ -414,6 +744,11 @@ export default function App() {
     guidance3d,
     backgroundMode,
     subjectPadding,
+    pivot,
+    pivotCustom,
+    upAxis,
+    units,
+    hunyuanUp,
     history,
     persistHistory,
   ]);
@@ -431,16 +766,16 @@ export default function App() {
       filePath = await window.hunyuan.saveGlb({
         srcPath: result.glbPath,
         base64: result.glbBase64,
-        filename: timestampName(result.faces || 'model', 'glb'),
+        filename: assetFilename(result.assetName || timestampName(result.faces || 'model', 'glb'), 'glb'),
       });
     } else if (result.type === 'stl') {
       const data = result.stl || (await window.ollama.readStl(result.stlPath));
       if (!data) return null;
-      filePath = await window.ollama.saveStl(data, timestampName(result.seed, 'stl'));
+      filePath = await window.ollama.saveStl(data, assetFilename(result.assetName || timestampName(result.seed, 'stl'), 'stl'));
     } else {
       filePath = await window.ollama.saveImage(
         result.image,
-        timestampName(result.seed, 'png')
+        assetFilename(result.assetName || timestampName(result.seed, 'png'), 'png')
       );
     }
     const updated = { ...result, filePath };
@@ -469,10 +804,47 @@ export default function App() {
     }
     const dest = await window.hunyuan.saveGlb({
       srcPath: conv.stl_path,
-      filename: timestampName(result.faces || 'model', 'stl'),
+      filename: assetFilename(result.assetName ? `${result.assetName}-print` : timestampName(result.faces || 'model', 'stl'), 'stl'),
     });
     return { path: dest, dims: conv.dims_mm };
   }, [result, stlMm]);
+
+  const handleTextureGlb = useCallback(async () => {
+    if (!result || result.type !== 'glb') return false;
+    if (!result.inputDataUrl) {
+      setError('Para texturizar este GLB necesito la referencia original en esta sesión.');
+      return false;
+    }
+    setError(null);
+    setGenerating(true);
+    setProgress({ percent: 94, label: `Texturizando GLB con Paint ${asset.textureSize || '2K'}`, remaining: null });
+    const imageBase64 = result.inputDataUrl.split(',')[1] || result.inputDataUrl;
+    const tex = await window.hunyuan.textureGlb({
+      glbPath: result.shapeGlbPath || result.glbPath,
+      imageBase64,
+      textureSize: asset.textureSize === '1K' ? '1K' : '2K',
+    });
+    setGenerating(false);
+    if (!tex.ok || !tex.textureApplied) {
+      setError(tex.error || 'Paint MLX no produjo una textura PBR valida.');
+      return false;
+    }
+    const updated = {
+      ...result,
+      shapeGlbBase64: result.shapeGlbBase64 || result.glbBase64,
+      shapeGlbPath: result.shapeGlbPath || result.glbPath,
+      glbBase64: tex.glbBase64,
+      glbPath: tex.glbPath,
+      textured: true,
+      textureRequested: true,
+      textureSize: tex.textureSize,
+      textureReport: tex.textureReport,
+    };
+    setResult(updated);
+    const { glbBase64, shapeGlbBase64, inputDataUrl, ...light } = updated;
+    persistHistory([light, ...history.filter((item) => item.id !== updated.id)].slice(0, MAX_HISTORY));
+    return true;
+  }, [asset.textureSize, history, persistHistory, result]);
 
   const handleCopyPrompt = useCallback(async () => {
     if (result?.prompt) {
@@ -593,23 +965,16 @@ export default function App() {
     setSubjectPadding(category.padding);
     setStlMm(recipe.stlMm);
     setPrompt(recipe.prompt);
+    resetOverrides();
     if (recipe.mode === 'image') {
       setParams((current) => ({ ...current, width: 1024, height: 1024, steps: 12 }));
     }
     setError(null);
-  }, []);
+  }, [resetOverrides]);
 
   const handleSelectModelCategory = useCallback((id) => {
-    const category = MODEL_CATEGORIES[id];
-    const profile = XR_PROFILES[category.profile];
-    setModelCategory(id);
-    setAsset({ ...profile, profile: category.profile, octree: category.octree, targetFaces: category.targetFaces, scale: category.scale });
-    setSteps3d(category.steps);
-    setGuidance3d(category.guidance);
-    setBackgroundMode(category.backgroundMode);
-    setSubjectPadding(category.padding);
-    setError(null);
-  }, []);
+    applyRecommendedCategory(id);
+  }, [applyRecommendedCategory]);
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-base text-neutral-200 before:pointer-events-none before:absolute before:inset-0 before:bg-[linear-gradient(rgba(82,215,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(82,215,255,0.025)_1px,transparent_1px)] before:bg-[size:42px_42px]">
@@ -621,15 +986,25 @@ export default function App() {
         onToolsRefresh={() => checkLocalTools(true)}
       />
 
-      <div className="relative z-10 flex min-h-0 flex-1 gap-3 p-3">
+      <div className="relative z-10 grid min-h-0 flex-1 grid-cols-[minmax(300px,340px)_minmax(0,1fr)] gap-2 p-2 xl:grid-cols-[380px_minmax(0,1fr)_220px] xl:gap-3 xl:p-3">
         {/* Left: form */}
-        <aside className="w-[380px] shrink-0 overflow-hidden rounded-[24px] border border-sky-200/10 bg-panel/65 shadow-[0_25px_70px_rgba(0,5,20,0.35)] backdrop-blur-xl">
+        <aside className="min-w-0 overflow-hidden rounded-[20px] border border-sky-200/10 bg-panel/65 shadow-[0_25px_70px_rgba(0,5,20,0.35)] backdrop-blur-xl xl:rounded-[24px]">
           <PromptPanel
             connected={status.connected}
             useCase={useCase}
             onSelectUseCase={handleSelectUseCase}
             modelCategory={modelCategory}
             onSelectModelCategory={handleSelectModelCategory}
+            configMode={configMode}
+            setConfigMode={setConfigMode}
+            manualOverrides={manualOverrides}
+            onResetRecommendations={() => applyRecommendedCategory(modelCategory)}
+            onResetRecommendationSection={resetRecommendationSection}
+            personalPresets={personalPresets}
+            onSavePersonalPreset={savePersonalPreset}
+            onApplyPersonalPreset={applyPersonalPreset}
+            executionPlan={executionPlan()}
+            deliveryEstimate={deliveryEstimate}
             mode={mode}
             setMode={setMode}
             imageModel={imageModel}
@@ -644,27 +1019,34 @@ export default function App() {
             prompt={prompt}
             setPrompt={setPrompt}
             params={params}
-            setParams={setParams}
+            setParams={setManualParams}
             image3dInput={image3dInput}
             onPickImage={handlePickImage}
             onDropImage={handleDropImage}
             steps3d={steps3d}
-            setSteps3d={setSteps3d}
+            setSteps3d={setManualSteps3d}
             guidance3d={guidance3d}
-            setGuidance3d={setGuidance3d}
+            setGuidance3d={setManualGuidance3d}
             backgroundMode={backgroundMode}
-            setBackgroundMode={setBackgroundMode}
+            setBackgroundMode={setManualBackgroundMode}
             subjectPadding={subjectPadding}
-            setSubjectPadding={setSubjectPadding}
+            setSubjectPadding={setManualSubjectPadding}
+            pivot={pivot}
+            setPivot={setManualPivot}
+            pivotCustom={pivotCustom}
+            setPivotCustom={setManualPivotCustom}
+            upAxis={upAxis}
+            setUpAxis={setManualUpAxis}
+            units={units}
+            setUnits={setManualUnits}
             stlMm={stlMm}
             setStlMm={setStlMm}
-            texture3d={texture3d}
-            setTexture3d={setTexture3d}
             analysis={analysis}
             analysisLoading={analysisLoading}
             asset={asset}
-            setAsset={setAsset}
+            setAsset={setManualAsset}
             hunyuanUp={hunyuanUp}
+            hunyuanHealth={hunyuanHealth}
             installingEngine={installingEngine}
             onInstallEngine={handleInstallEngine}
             generating={generating}
@@ -676,7 +1058,7 @@ export default function App() {
         </aside>
 
         {/* Center: result */}
-        <main className="min-w-0 flex-1 overflow-hidden rounded-[24px] border border-sky-200/10 bg-[#041023]/70 shadow-[0_25px_80px_rgba(0,4,18,0.4)] backdrop-blur-xl">
+        <main className="min-w-0 overflow-hidden rounded-[20px] border border-sky-200/10 bg-[#041023]/70 shadow-[0_25px_80px_rgba(0,4,18,0.4)] backdrop-blur-xl xl:rounded-[24px]">
           <ImageViewer
             result={result}
             generating={generating}
@@ -687,6 +1069,7 @@ export default function App() {
             error={error}
             onSave={handleSave}
             onSaveStl={handleSaveStl3d}
+            onTextureGlb={handleTextureGlb}
             onCopyPrompt={handleCopyPrompt}
             onReveal={(p) => window.ollama.revealInFinder(p)}
             asset={asset}
@@ -695,7 +1078,7 @@ export default function App() {
         </main>
 
         {/* Right: gallery */}
-        <aside className="w-[220px] shrink-0 overflow-hidden rounded-[24px] border border-sky-200/10 bg-panel/65 shadow-[0_25px_70px_rgba(0,5,20,0.3)] backdrop-blur-xl">
+        <aside className="hidden min-w-0 overflow-hidden rounded-[24px] border border-sky-200/10 bg-panel/65 shadow-[0_25px_70px_rgba(0,5,20,0.3)] backdrop-blur-xl xl:block">
           <Gallery
             history={history}
             activeId={result?.id}

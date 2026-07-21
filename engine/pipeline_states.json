@@ -1,0 +1,28 @@
+{
+  "states": [
+    { "id": "queued", "label": "En cola", "progress": 0 },
+    { "id": "preparing", "label": "Preparando referencia", "progress": 5 },
+    { "id": "input_saved", "label": "Referencia recibida", "progress": 7 },
+    { "id": "isolating", "label": "Aislando y encuadrando el sujeto", "progress": 10 },
+    { "id": "reference_ready", "label": "Referencia preparada", "progress": 14 },
+    { "id": "loading", "label": "Cargando Hunyuan3D", "progress": 15 },
+    { "id": "model_ready", "label": "Motor Hunyuan3D listo", "progress": 24 },
+    { "id": "reconstructing", "label": "Reconstruyendo volumen", "progress": 35 },
+    { "id": "mesh_ready", "label": "Volumen reconstruido", "progress": 72 },
+    { "id": "optimizing", "label": "Optimizando geometría", "progress": 78 },
+    { "id": "mesh_cleaned", "label": "Malla limpiada", "progress": 82 },
+    { "id": "quality_checked", "label": "Auditoría de calidad completada", "progress": 86 },
+    { "id": "mesh_simplified", "label": "Presupuesto de caras aplicado", "progress": 89 },
+    { "id": "delivery_ready", "label": "Escala, pivot y orientación aplicados", "progress": 92 },
+    { "id": "packaging", "label": "Empaquetando GLB", "progress": 94 },
+    { "id": "glb_exported", "label": "GLB exportado", "progress": 96 },
+    { "id": "paint_loading", "label": "Cargando Hunyuan Paint", "progress": 96 },
+    { "id": "texturing", "label": "Sintetizando materiales PBR", "progress": 97 },
+    { "id": "texture_validated", "label": "Materiales PBR validados", "progress": 98 },
+    { "id": "lods_exported", "label": "LOD generados", "progress": 99 },
+    { "id": "report_saved", "label": "Reporte técnico guardado", "progress": 99 },
+    { "id": "done", "label": "Completado", "progress": 100 },
+    { "id": "cancelled", "label": "Cancelado por el usuario", "progress": 0 },
+    { "id": "error", "label": "Error", "progress": 0 }
+  ]
+}

@@ -7,18 +7,18 @@ export default function Header({ status, onRefresh, toolSnapshot, toolsChecking,
   const dot = checking ? 'bg-amber-400' : connected ? 'bg-cyan-400' : 'bg-rose-400';
 
   return (
-    <header className="relative z-20 flex h-16 shrink-0 items-center justify-between border-b border-sky-200/10 bg-[#061429]/75 pl-20 pr-5 shadow-[0_12px_40px_rgba(0,5,20,0.25)] backdrop-blur-2xl select-none">
+    <header className="relative z-20 flex h-14 shrink-0 items-center justify-between border-b border-sky-200/10 bg-[#061429]/75 pl-14 pr-3 shadow-[0_12px_40px_rgba(0,5,20,0.25)] backdrop-blur-2xl select-none xl:h-16 xl:pl-20 xl:pr-5">
       <div className="flex items-center gap-3">
-        <div className="relative grid h-9 w-9 place-items-center overflow-hidden rounded-xl border border-sky-300/20 bg-gradient-to-br from-blue-500/30 to-cyan-300/10 shadow-[0_0_25px_rgba(22,137,232,0.2)]">
+        <div className="relative grid h-8 w-8 place-items-center overflow-hidden rounded-xl border border-sky-300/20 bg-gradient-to-br from-blue-500/30 to-cyan-300/10 shadow-[0_0_25px_rgba(22,137,232,0.2)] xl:h-9 xl:w-9">
           <span className="text-sm font-bold tracking-tighter text-sky-100">XR</span>
           <span className="absolute inset-x-1 bottom-0 h-px bg-gradient-to-r from-transparent via-cyan-300 to-transparent" />
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className="whitespace-nowrap text-[15px] font-semibold tracking-tight text-white">Xreality Convert</span>
-            <span className="hidden rounded-md border border-sky-300/10 bg-sky-300/5 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.16em] text-sky-300 min-[900px]:inline">Spatial asset lab</span>
+            <span className="hidden rounded-md border border-sky-300/10 bg-sky-300/5 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.16em] text-sky-300 min-[900px]:inline">Laboratorio XR local</span>
           </div>
-          <p className="mt-0.5 hidden text-[10px] text-slate-500 min-[760px]:block">Imagen, geometría y optimización XR en un flujo local</p>
+          <p className="mt-0.5 hidden text-[10px] text-slate-500 xl:block">Referencias, mallas y auditoría listas para producción</p>
         </div>
       </div>
 

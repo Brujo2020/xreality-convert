@@ -1,5 +1,7 @@
 # Realtime PBR Texture Editor Implementation Plan
 
+Estado: cerrado como plan aprobado el 2026-07-19; implementación queda para la próxima evolución.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a separate local MLX Paint stage that preserves the original mesh, previews editable PBR material changes in real time, and exports the exact selected original or textured GLB.

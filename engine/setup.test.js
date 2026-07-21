@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const engineDir = path.dirname(fileURLToPath(import.meta.url));
+const appDir = path.dirname(engineDir);
 
 test('preflight finds a supported user-local Python with Finder PATH', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ois-python-home-'));
@@ -25,4 +26,12 @@ test('preflight finds a supported user-local Python with Finder PATH', () => {
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }
+});
+
+test('packaged app includes Hunyuan Paint runtime files', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(appDir, 'package.json'), 'utf8'));
+  const paintRuntime = 'engine/Hunyuan3D-2.1-mlx/hy3dpaint/**/*';
+
+  assert.ok(pkg.build.files.includes(paintRuntime));
+  assert.ok(pkg.build.asarUnpack.includes(paintRuntime));
 });

@@ -12,11 +12,18 @@ import os
 import sys
 import time
 import uuid
+import gc
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from PIL import Image
+from geometry_delivery import apply_delivery_transform, export_lods, normalize_delivery_options, simplification_policy, simplify_mesh
+from job_logging import append_job_log
+from job_queue import HeavyJobQueue, QueueFull
+from pipeline_states import pipeline_state
+from paint_service import PaintService
+from storage import cleanup_old_temporaries, format_gb, free_bytes, has_free_space
 
 ROOT = Path(__file__).resolve().parent
 SOURCE = ROOT / "Hunyuan3D-2.1-mlx"
@@ -27,8 +34,14 @@ JOBS_DIR = ROOT / "jobs"
 JOBS_DIR.mkdir(parents=True, exist_ok=True)
 REPORTS_DIR = JOBS_DIR / "reports"
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+LOGS_DIR = JOBS_DIR / "logs"
+LOGS_DIR.mkdir(parents=True, exist_ok=True)
+MIN_GENERATE_FREE_BYTES = 2 * 1024**3
+TEMP_MAX_AGE_SECONDS = 24 * 60 * 60
+cleanup_old_temporaries(JOBS_DIR, TEMP_MAX_AGE_SECONDS)
 
 jobs = {}
+job_queue = None
 shape_pipeline = None
 load_error = None
 background_session = None
@@ -41,6 +54,7 @@ class GenerateRequest(BaseModel):
     steps: int = Field(default=30, ge=10, le=60)
     octree_resolution: int = Field(default=192, ge=96, le=256)
     texture: bool = False
+    texture_size: str = Field(default="2K", pattern="^(1K|2K)$")
     target_faces: int = Field(default=50000, ge=1000, le=500000)
     scale_meters: float = Field(default=1.0, gt=0, le=1000)
     profile: str = "xreal"
@@ -48,6 +62,10 @@ class GenerateRequest(BaseModel):
     guidance: float = Field(default=6.0, ge=1.0, le=12.0)
     background_mode: str = "auto"
     subject_padding: float = Field(default=0.16, ge=0.02, le=0.4)
+    pivot: str = "center"
+    pivot_custom: list[float] | None = None
+    up_axis: str = "y"
+    units: str = "m"
 
 
 class StlRequest(BaseModel):
@@ -55,10 +73,26 @@ class StlRequest(BaseModel):
     target_mm: float = Field(default=60, gt=0, le=10000)
 
 
+class TextureRequest(BaseModel):
+    glb_path: str
+    image_base64: str = Field(min_length=32)
+    texture_size: str = Field(default="2K", pattern="^(1K|2K)$")
+
+
 class AnalyzeRequest(BaseModel):
     image_base64: str = Field(min_length=32)
     category: str = "custom"
     background_mode: str = "auto"
+
+
+def job_file_path(path_text: str):
+    path = Path(path_text).resolve()
+    jobs_root = JOBS_DIR.resolve()
+    if path.suffix.lower() != ".glb" or jobs_root not in path.parents:
+        raise HTTPException(400, "Solo se pueden texturizar GLB generados por Xreality Convert.")
+    if not path.is_file():
+        raise HTTPException(404, "GLB base no encontrado.")
+    return path
 
 
 def patch_mlx_runtime():
@@ -276,6 +310,8 @@ def analyze_image(image: Image.Image, category: str, background_mode: str):
         actions.append("Para arquitectura, conviene mantener la escena completa.")
 
     prepared = prepare_reference_image(rgba, category, background_mode, 0.16)
+    mask_preview = Image.new("RGBA", mask.size, (0, 0, 0, 255))
+    mask_preview.putalpha(mask)
     return {
         "status": status,
         "resolution": {"width": width, "height": height},
@@ -295,6 +331,7 @@ def analyze_image(image: Image.Image, category: str, background_mode: str):
         "suggested_category": suggested_category,
         "suggested_background_mode": suggested_background,
         "actions": actions,
+        "mask_base64": image_to_base64(mask_preview),
         "preview_base64": image_to_base64(prepared),
     }
 
@@ -448,10 +485,13 @@ def mark_cancelled(job_id: str):
     job.update(
         {
             "status": "cancelled",
-            "stage": "Cancelado por el usuario",
+            "state": "cancelled",
+            "stage": pipeline_state("cancelled")["label"],
+            "progress": pipeline_state("cancelled")["progress"],
             "cancel_requested": True,
         }
     )
+    append_job_log(LOGS_DIR, job_id, "cancelled", stage=job["stage"], status=job["status"])
     return job
 
 
@@ -465,10 +505,31 @@ def cleanup_job(job_id: str):
                 pass
 
 
+def set_job_state(job_id: str, state_id: str, **extra):
+    state = pipeline_state(state_id)
+    payload = {
+        "state": state_id,
+        "stage": state["label"],
+        "progress": state["progress"],
+        **extra,
+    }
+    jobs[job_id].update(payload)
+    append_job_log(
+        LOGS_DIR,
+        job_id,
+        "stage",
+        state=state_id,
+        status=jobs[job_id].get("status"),
+        stage=payload["stage"],
+        progress=payload["progress"],
+    )
+
+
 def run_job(job_id: str, request: GenerateRequest):
     global shape_pipeline
     job = jobs[job_id]
     started = time.monotonic()
+    pipeline = None
 
     def cancelled():
         return bool(job.get("cancel_requested"))
@@ -476,23 +537,28 @@ def run_job(job_id: str, request: GenerateRequest):
     try:
         if cancelled():
             return
-        job.update({"status": "running", "progress": 5, "stage": "Preparando referencia"})
+        job.update({"status": "running"})
+        set_job_state(job_id, "preparing")
 
         image_path = JOBS_DIR / f"{job_id}.png"
         image_path.write_bytes(decode_image_base64(request.image_base64))
+        set_job_state(job_id, "input_saved")
         if cancelled():
             return
 
-        job.update({"progress": 8, "stage": "Aislando y encuadrando el sujeto"})
+        set_job_state(job_id, "isolating")
         prepared_path = prepare_reference(image_path, request)
+        set_job_state(job_id, "reference_ready")
         if cancelled():
             return
 
-        job.update({"progress": 15, "stage": "Cargando Hunyuan3D"})
+        set_job_state(job_id, "loading")
         pipeline = get_pipeline()
+        set_job_state(job_id, "model_ready")
         if cancelled():
             return
 
+        set_job_state(job_id, "reconstructing")
         mesh = extract_mesh(
             pipeline(
                 str(prepared_path),
@@ -502,12 +568,14 @@ def run_job(job_id: str, request: GenerateRequest):
             )
         )
         shape_pipeline = None
+        set_job_state(job_id, "mesh_ready")
         if cancelled():
             return
 
-        job.update({"progress": 82, "stage": "Optimizando geometría"})
+        set_job_state(job_id, "optimizing")
         mesh, raw_faces = clean_mesh(mesh, request.category)
         faces_before = len(getattr(mesh, "faces", []))
+        set_job_state(job_id, "mesh_cleaned")
 
         minimum_faces = 3000 if request.category in {"animal", "person"} else 800
         if faces_before < minimum_faces or len(getattr(mesh, "vertices", [])) < 500:
@@ -523,19 +591,42 @@ def run_job(job_id: str, request: GenerateRequest):
                 "Resultado rechazado por control de calidad: "
                 + "; ".join(quality["reasons"] or ["la malla no alcanzó el nivel mínimo."])
             )
+        set_job_state(job_id, "quality_checked")
 
-        if faces_before > request.target_faces:
-            try:
-                mesh = mesh.simplify_quadric_decimation(face_count=request.target_faces)
-            except TypeError:
-                mesh = mesh.simplify_quadric_decimation(request.target_faces)
-
-        longest = max(getattr(mesh, "extents", [1])) or 1
-        mesh.apply_scale(request.scale_meters / longest)
+        simplification = simplification_policy(request.category, request.target_faces, faces_before, request.profile)
+        mesh = simplify_mesh(mesh, request.target_faces, request.category, request.profile)
+        set_job_state(job_id, "mesh_simplified")
+        delivery = normalize_delivery_options(request.pivot, request.up_axis, request.units, request.pivot_custom)
+        apply_delivery_transform(mesh, scale_meters=request.scale_meters, **delivery)
+        set_job_state(job_id, "delivery_ready")
 
         output = JOBS_DIR / f"{job_id}.glb"
-        job.update({"progress": 94, "stage": "Empaquetando GLB"})
-        mesh.export(str(output))
+        shape_output = JOBS_DIR / f"{job_id}-shape.glb" if request.texture else output
+        set_job_state(job_id, "packaging")
+        mesh.export(str(shape_output))
+        set_job_state(job_id, "glb_exported")
+
+        texture_report = None
+        if request.texture:
+            pipeline = None
+            gc.collect()
+            try:
+                import mlx.core as mx
+                mx.clear_cache()
+            except Exception:
+                pass
+            set_job_state(job_id, "paint_loading")
+            set_job_state(job_id, "texturing")
+            texture_report = PaintService().run(
+                mesh_path=shape_output,
+                image_path=prepared_path,
+                output_glb_path=output,
+                texture_size=request.texture_size,
+            )
+            set_job_state(job_id, "texture_validated")
+
+        lods = export_lods(mesh, JOBS_DIR, job_id, request.target_faces, output, request.category, request.profile)
+        set_job_state(job_id, "lods_exported")
 
         faces = len(getattr(mesh, "faces", []))
         elapsed = round(time.monotonic() - started, 1)
@@ -548,6 +639,7 @@ def run_job(job_id: str, request: GenerateRequest):
                 "steps": request.steps,
                 "octree_resolution": request.octree_resolution,
                 "texture": request.texture,
+                "texture_size": request.texture_size,
                 "target_faces": request.target_faces,
                 "scale_meters": request.scale_meters,
                 "profile": request.profile,
@@ -555,46 +647,111 @@ def run_job(job_id: str, request: GenerateRequest):
                 "guidance": request.guidance,
                 "background_mode": request.background_mode,
                 "subject_padding": request.subject_padding,
+                **delivery,
             },
             "metrics": {
                 "faces_before": faces_before,
                 "raw_faces": raw_faces,
                 "faces": faces,
                 "vertices": len(getattr(mesh, "vertices", [])),
+                "simplification": simplification,
                 **quality,
+            },
+            "lods": lods,
+            "texture": {
+                "requested": request.texture,
+                "applied": bool(texture_report and texture_report.get("passed")),
+                "profile": request.texture_size if request.texture else None,
+                "gate": texture_report,
+                "shape_glb_path": str(shape_output) if request.texture else None,
             },
         }
         report_path = save_report(job_id, report)
+        set_job_state(job_id, "report_saved")
         job.update(
             {
                 "status": "done",
-                "progress": 100,
-                "stage": "Completado",
+                "state": "done",
+                "progress": pipeline_state("done")["progress"],
+                "stage": pipeline_state("done")["label"],
                 "glb_path": str(output),
+                "lod_paths": lods,
                 "faces": faces,
                 "faces_before": faces_before,
                 "raw_faces": raw_faces,
                 "elapsed": elapsed,
                 "texture_requested": request.texture,
+                "texture_applied": bool(texture_report and texture_report.get("passed")),
+                "texture_size": request.texture_size if request.texture else None,
+                "texture_report": texture_report,
+                "shape_glb_path": str(shape_output) if request.texture else None,
                 "profile": request.profile,
                 "category": request.category,
                 "background_mode": request.background_mode,
+                **delivery,
                 "report_path": report_path,
                 "quality_score": quality["score"],
                 "quality_level": quality["level"],
                 "quality_text": " ".join(quality["reasons"]) if quality["reasons"] else "Validado correctamente.",
             }
         )
+        append_job_log(
+            LOGS_DIR,
+            job_id,
+            "done",
+            status="done",
+            stage="Completado",
+            duration=elapsed,
+            faces=faces,
+            quality_level=quality["level"],
+        )
     except Exception as exc:
         shape_pipeline = None
-        job.update({"status": "error", "error": str(exc), "elapsed": round(time.monotonic() - started, 1)})
+        job.update(
+            {
+                "status": "error",
+                "state": "error",
+                "stage": pipeline_state("error")["label"],
+                "progress": pipeline_state("error")["progress"],
+                "error": str(exc),
+                "elapsed": round(time.monotonic() - started, 1),
+            }
+        )
+        append_job_log(
+            LOGS_DIR,
+            job_id,
+            "error",
+            status="error",
+            error=str(exc),
+            duration=job["elapsed"],
+        )
     finally:
+        shape_pipeline = None
+        pipeline = None
+        gc.collect()
+        try:
+            mx = sys.modules.get("mlx.core")
+            if mx is not None:
+                mx.clear_cache()
+        except Exception:
+            pass
         cleanup_job(job_id)
+
+
+job_queue = HeavyJobQueue(jobs, run_job, max_pending=1)
 
 
 @app.get("/health")
 def health():
-    return {"ready": SOURCE.exists(), "model_loaded": shape_pipeline is not None, "error": load_error}
+    queue = job_queue.snapshot() if job_queue is not None else None
+    degraded = bool(queue and queue["active_job_id"] and len(queue["pending"]) >= queue["max_pending"])
+    return {
+        "ready": SOURCE.exists(),
+        "model_loaded": shape_pipeline is not None,
+        "error": load_error,
+        "queue": queue,
+        "degraded": degraded,
+    }
 
 
 @app.post("/analyze")
@@ -612,9 +769,21 @@ def analyze(request: AnalyzeRequest):
 async def generate(request: GenerateRequest):
     if not SOURCE.exists():
         raise HTTPException(503, "Motor no instalado. Ejecuta la instalación desde Xreality Convert.")
+    if not has_free_space(JOBS_DIR, MIN_GENERATE_FREE_BYTES):
+        available = format_gb(free_bytes(JOBS_DIR))
+        required = format_gb(MIN_GENERATE_FREE_BYTES)
+        raise HTTPException(
+            507,
+            f"Espacio insuficiente para generar: {available} GB libres, {required} GB requeridos.",
+        )
+    cleanup_old_temporaries(JOBS_DIR, TEMP_MAX_AGE_SECONDS)
     job_id = uuid.uuid4().hex
-    jobs[job_id] = {"status": "queued", "cancel_requested": False, "progress": 0, "stage": "En cola"}
-    asyncio.create_task(asyncio.to_thread(run_job, job_id, request))
+    try:
+        await job_queue.submit(job_id, request)
+        jobs[job_id].update({"state": "queued"})
+        append_job_log(LOGS_DIR, job_id, "queued", status="queued", stage="En cola")
+    except QueueFull as exc:
+        raise HTTPException(429, str(exc)) from exc
     return {"job_id": job_id}
 
 
@@ -672,6 +841,42 @@ def to_stl(request: StlRequest):
         }
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
+
+
+@app.post("/texture")
+def texture_glb(request: TextureRequest):
+    if not SOURCE.exists():
+        raise HTTPException(503, "Motor no instalado. Ejecuta la instalación desde Xreality Convert.")
+    if not has_free_space(JOBS_DIR, MIN_GENERATE_FREE_BYTES):
+        available = format_gb(free_bytes(JOBS_DIR))
+        required = format_gb(MIN_GENERATE_FREE_BYTES)
+        raise HTTPException(507, f"Espacio insuficiente para texturizar: {available} GB libres, {required} GB requeridos.")
+    mesh_path = job_file_path(request.glb_path)
+    texture_id = uuid.uuid4().hex
+    reference_path = JOBS_DIR / f"{texture_id}-texture-reference.png"
+    output = JOBS_DIR / f"{texture_id}-textured.glb"
+    try:
+      reference_path.write_bytes(decode_image_base64(request.image_base64))
+      report = PaintService().run(
+          mesh_path=mesh_path,
+          image_path=reference_path,
+          output_glb_path=output,
+          texture_size=request.texture_size,
+      )
+      return {
+          "ok": True,
+          "glb_path": str(output),
+          "texture_applied": bool(report.get("passed")),
+          "texture_size": request.texture_size,
+          "texture_report": report,
+      }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": str(exc),
+            "texture_applied": False,
+            "texture_size": request.texture_size,
+        }
 
 
 if __name__ == "__main__":

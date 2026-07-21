@@ -22,7 +22,7 @@ export default function StlViewer({ stl }) {
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 5000);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.setSize(width, height);
     mount.appendChild(renderer.domElement);
 
@@ -68,17 +68,13 @@ export default function StlViewer({ stl }) {
     scene.add(grid);
 
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
+    controls.enableDamping = false;
     controls.target.set(0, 0, 0);
 
     let raf;
-    const animate = () => {
-      raf = requestAnimationFrame(animate);
-      controls.update();
-      renderer.render(scene, camera);
-    };
-    animate();
+    const renderOnce = () => renderer.render(scene, camera);
+    controls.addEventListener('change', renderOnce);
+    renderOnce();
 
     // Keep the canvas sized to its container.
     const onResize = () => {
@@ -88,6 +84,7 @@ export default function StlViewer({ stl }) {
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h);
+      renderOnce();
     };
     const ro = new ResizeObserver(onResize);
     ro.observe(mount);
@@ -95,6 +92,7 @@ export default function StlViewer({ stl }) {
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      controls.removeEventListener('change', renderOnce);
       controls.dispose();
       geometry.dispose();
       material.dispose();

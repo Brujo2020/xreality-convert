@@ -8,17 +8,28 @@ const vm = require('node:vm');
 const { spawn } = require('node:child_process');
 const jscadModeling = require('@jscad/modeling');
 const stlSerializer = require('@jscad/stl-serializer');
+const { copyIfChecksumDiffers, copyTreeIfMissing } = require('./file-sync');
+const { nextRestartDelayMs } = require('./process-backoff');
+const { extractGeneratedText } = require('./ollama-response');
+const { loadedGenerativeModelIds, parseModelKey, rankOmlxModels } = require('./model-routing');
 
 const APP_NAME = 'Xreality Convert';
 const APP_ID = 'com.xreality.convert';
 
 const OLLAMA_HOST = 'localhost';
 const OLLAMA_PORT = 11434;
+const GB = 1024 ** 3;
+const MIN_MODEL_INSTALL_FREE_BYTES = 8 * GB;
+const MIN_ENGINE_INSTALL_FREE_BYTES = 20 * GB;
 
 const isDev = process.env.NODE_ENV === 'development';
 
 app.setName(APP_NAME);
 app.setAppUserModelId(APP_ID);
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+}
 
 // --- Persistence paths -----------------------------------------------------
 const APP_SUPPORT_DIR = path.join(
@@ -29,9 +40,34 @@ const HISTORY_FILE = path.join(APP_SUPPORT_DIR, 'history.json');
 const STL_CACHE_DIR = path.join(APP_SUPPORT_DIR, 'stl-cache');
 const PICTURES_DIR = path.join(app.getPath('pictures'), 'XrealityConvert');
 const STL_SAVE_DIR = path.join(app.getPath('documents'), 'XrealityConvert');
+const OMLX_SETTINGS_FILE = path.join(os.homedir(), '.omlx', 'settings.json');
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
+}
+
+function freeBytesForPath(targetPath) {
+  let current = targetPath;
+  while (!fs.existsSync(current)) {
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  const stats = fs.statfsSync(current);
+  return stats.bavail * stats.bsize;
+}
+
+function assertFreeSpace(targetPath, requiredBytes, label) {
+  const available = freeBytesForPath(targetPath);
+  if (available < requiredBytes) {
+    const availableGb = (available / GB).toFixed(1);
+    const requiredGb = (requiredBytes / GB).toFixed(1);
+    return {
+      ok: false,
+      error: `${label}: espacio insuficiente (${availableGb} GB libres, ${requiredGb} GB requeridos).`,
+    };
+  }
+  return { ok: true };
 }
 
 // --- Lightweight HTTP helper (Node core, no deps) --------------------------
@@ -80,6 +116,116 @@ function ollamaRequest({ method, pathName, body, timeout, signal }) {
     if (payload) req.write(payload);
     req.end();
   });
+}
+
+function readOmlxConfig() {
+  const settings = JSON.parse(fs.readFileSync(OMLX_SETTINGS_FILE, 'utf8'));
+  const host = settings.server?.host || '127.0.0.1';
+  if (!['127.0.0.1', 'localhost', '::1'].includes(host)) {
+    throw new Error('oMLX debe usar una dirección local segura.');
+  }
+  return {
+    host,
+    port: Number(settings.server?.port) || 8000,
+    apiKey: settings.auth?.api_key || process.env.OMLX_API_KEY || '',
+  };
+}
+
+function omlxRequest({ method, pathName, body, timeout, signal }) {
+  const config = readOmlxConfig();
+  return new Promise((resolve, reject) => {
+    const payload = body ? JSON.stringify(body) : null;
+    const req = http.request({
+      host: config.host,
+      port: config.port,
+      path: pathName,
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
+        ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}),
+      },
+    }, (res) => {
+      const chunks = [];
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () => resolve({
+        statusCode: res.statusCode,
+        body: Buffer.concat(chunks).toString('utf8'),
+      }));
+    });
+    if (timeout) req.setTimeout(timeout, () => req.destroy(new Error('TIMEOUT')));
+    if (signal) {
+      if (signal.aborted) req.destroy(new Error('ABORTED'));
+      signal.addEventListener('abort', () => req.destroy(new Error('ABORTED')), { once: true });
+    }
+    req.on('error', reject);
+    if (payload) req.write(payload);
+    req.end();
+  });
+}
+
+async function listOmlxModels() {
+  const res = await omlxRequest({ method: 'GET', pathName: '/v1/models/status', timeout: 2500 });
+  if (res.statusCode !== 200) throw new Error(`oMLX HTTP ${res.statusCode}`);
+  return rankOmlxModels(JSON.parse(res.body));
+}
+
+async function releaseOmlxGenerationMemory() {
+  try {
+    const res = await omlxRequest({ method: 'GET', pathName: '/v1/models/status', timeout: 2500 });
+    if (res.statusCode !== 200) return;
+    const ids = loadedGenerativeModelIds(JSON.parse(res.body));
+    await Promise.allSettled(ids.map((id) => omlxRequest({
+      method: 'POST',
+      pathName: `/v1/models/${encodeURIComponent(id)}/unload`,
+      timeout: 15000,
+    })));
+  } catch {}
+}
+
+async function releaseOllamaGenerationMemory() {
+  try {
+    const res = await ollamaRequest({ method: 'GET', pathName: '/api/ps', timeout: 2500 });
+    if (res.statusCode !== 200) return;
+    const models = JSON.parse(res.body).models || [];
+    await Promise.allSettled(models.map((model) => ollamaRequest({
+      method: 'POST',
+      pathName: '/api/generate',
+      timeout: 15000,
+      body: { model: model.name || model.model, keep_alive: 0 },
+    })));
+  } catch {}
+}
+
+async function ensureOmlxRunning() {
+  try {
+    await listOmlxModels();
+    return true;
+  } catch {}
+
+  const candidates = ['/opt/homebrew/bin/omlx', '/usr/local/bin/omlx'];
+  const executable = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!executable) return false;
+  try {
+    spawn(executable, ['start', '--no-wait'], {
+      detached: true,
+      stdio: 'ignore',
+      env: process.env,
+    }).unref();
+  } catch {
+    return false;
+  }
+
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    try {
+      await listOmlxModels();
+      return true;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+  return false;
 }
 
 // Track the active generation so Cancel can abort it.
@@ -143,32 +289,36 @@ async function ensureOllamaRunning() {
 
 // --- IPC: check Ollama status + list image models --------------------------
 ipcMain.handle('ollama:checkStatus', async () => {
-  try {
-    await ensureOllamaRunning();
-    const res = await ollamaRequest({
+  await Promise.all([ensureOllamaRunning(), ensureOmlxRunning()]);
+  const [ollamaResult, omlxResult] = await Promise.allSettled([
+    ollamaRequest({
       method: 'GET',
       pathName: '/api/tags',
       timeout: 4000,
-    });
-    if (res.statusCode !== 200) {
-      return { connected: false, models: [], error: `HTTP ${res.statusCode}` };
-    }
-    const data = JSON.parse(res.body);
-    const allModels = Array.isArray(data.models)
-      ? data.models.map((m) => m.name)
+    }),
+    listOmlxModels(),
+  ]);
+  const ollamaResponse = ollamaResult.status === 'fulfilled' ? ollamaResult.value : null;
+  const ollamaData = ollamaResponse?.statusCode === 200 ? JSON.parse(ollamaResponse.body) : {};
+  const ollamaModels = Array.isArray(ollamaData.models)
+      ? ollamaData.models.map((m) => m.name)
       : [];
-    // Keep only image-capable model names.
-    const imageModels = allModels.filter(
-      (name) => /z-image|flux/i.test(name)
-    );
-    return { connected: true, models: imageModels, allModels };
-  } catch (err) {
-    return { connected: false, models: [], error: err.message };
-  }
+  const omlxModels = omlxResult.status === 'fulfilled' ? omlxResult.value : [];
+  const allModels = [...omlxModels, ...ollamaModels];
+  const imageModels = ollamaModels.filter((name) => /z-image|flux/i.test(name));
+  return {
+    connected: allModels.length > 0,
+    models: imageModels,
+    allModels,
+    providers: { omlx: omlxModels.length > 0, ollama: ollamaModels.length > 0 },
+    error: allModels.length ? null : 'No hay proveedores de modelos locales disponibles.',
+  };
 });
 
 ipcMain.handle('ollama:pullModel', async (_event, model) => {
   await ensureOllamaRunning();
+  const space = assertFreeSpace(APP_SUPPORT_DIR, MIN_MODEL_INSTALL_FREE_BYTES, 'Instalación de modelo');
+  if (!space.ok) return space;
   try {
     const res = await ollamaRequest({
       method: 'POST',
@@ -455,8 +605,27 @@ function buildStlFromCode(code) {
 // previous (broken) code and its error are fed back so the model can fix it.
 async function requestJscadCode(model, userPrompt, seed, signal, repair) {
   const prompt = repair
-    ? `Your previous JSCAD code failed to build with this error:\n${repair.error}\n\nPrevious code:\n${repair.code}\n\nReturn corrected JSCAD code (only valid @jscad/modeling APIs). Object to model: ${userPrompt}`
+    ? `Your previous JSCAD attempt failed with this error:\n${repair.error}\n\n${repair.code ? `Previous code:\n${repair.code}\n\n` : ''}Return corrected JSCAD code immediately, without analysis or prose. Object to model: ${userPrompt}`
     : `Object to model: ${userPrompt}`;
+  const selected = parseModelKey(model);
+  if (selected.provider === 'omlx') {
+    return omlxRequest({
+      method: 'POST',
+      pathName: '/v1/chat/completions',
+      timeout: 600000,
+      signal,
+      body: {
+        model: selected.id,
+        messages: [
+          { role: 'system', content: STL_SYSTEM_PROMPT },
+          { role: 'user', content: prompt },
+        ],
+        stream: false,
+        temperature: repair ? 0.3 : 0.6,
+        max_tokens: 4096,
+      },
+    });
+  }
   return ollamaRequest({
     method: 'POST',
     pathName: '/api/generate',
@@ -467,7 +636,12 @@ async function requestJscadCode(model, userPrompt, seed, signal, repair) {
       system: STL_SYSTEM_PROMPT,
       prompt,
       stream: false,
-      options: { seed, temperature: repair ? 0.3 : 0.6 },
+      think: false,
+      options: {
+        seed,
+        temperature: repair ? 0.3 : 0.6,
+        num_predict: 4096,
+      },
     },
   });
 }
@@ -523,9 +697,13 @@ ipcMain.handle('ollama:generateStl', async (_event, params) => {
       }
 
       const data = JSON.parse(res.body);
-      code = extractCode(data.response || '');
+      const normalized = data.choices?.[0]?.message
+        ? { message: data.choices[0].message }
+        : data;
+      code = extractCode(extractGeneratedText(normalized));
       if (!code) {
-        lastError = 'Le modèle n\'a renvoyé aucun code.';
+        const reason = data.done_reason ? ` (${data.done_reason})` : '';
+        lastError = `Le modèle n'a renvoyé aucun code${reason}. Réponds directement avec le bloc JSCAD, sans raisonnement.`;
         continue;
       }
       try {
@@ -634,6 +812,7 @@ ipcMain.handle('ollama:saveHistory', async (_event, history) => {
 // --- Hunyuan3D (image -> 3D mesh) via local FastAPI server -----------------
 const HUNYUAN_PORT = 8765;
 const HUNYUAN_INSTALL_VERSION = '4';
+const HUNYUAN_MAX_RESTARTS = 3;
 
 function hunyuanRequest({ method, pathName, body, timeout }) {
   return new Promise((resolve, reject) => {
@@ -701,16 +880,22 @@ ipcMain.handle('tools:list', async (_event, payload = {}) => (
 let hunyuanServerProc = null;
 let hunyuanInstallProc = null;
 let hunyuanActiveJobId = null;
+let hunyuanRestartAttempts = 0;
+let hunyuanStopping = false;
 
 function prepareHunyuanEngineFiles() {
   if (HUNYUAN_SERVER_DIR === BUNDLED_ENGINE_DIR) return;
   ensureDir(HUNYUAN_SERVER_DIR);
-  for (const filename of ['server.py', 'setup.sh']) {
+  for (const filename of ['server.py', 'setup.sh', 'job_queue.py', 'job_logging.py', 'geometry_delivery.py', 'storage.py', 'pipeline_states.py', 'pipeline_states.json', 'paint_service.py', 'pbr_glb.py']) {
     const source = path.join(BUNDLED_ENGINE_DIR, filename);
     if (fs.existsSync(source)) {
-      fs.copyFileSync(source, path.join(HUNYUAN_SERVER_DIR, filename));
+      copyIfChecksumDiffers(source, path.join(HUNYUAN_SERVER_DIR, filename));
     }
   }
+  copyTreeIfMissing(
+    path.join(BUNDLED_ENGINE_DIR, 'Hunyuan3D-2.1-mlx', 'hy3dpaint'),
+    path.join(HUNYUAN_SERVER_DIR, 'Hunyuan3D-2.1-mlx', 'hy3dpaint')
+  );
 }
 
 function hunyuanIsUp() {
@@ -730,6 +915,7 @@ function hunyuanIsUp() {
 
 async function startHunyuanServer() {
   if (await hunyuanIsUp()) return; // already running (e.g. started manually)
+  hunyuanStopping = false;
   const py = path.join(HUNYUAN_SERVER_DIR, 'venv', 'bin', 'python');
   const script = path.join(HUNYUAN_SERVER_DIR, 'server.py');
   if (!fs.existsSync(py) || !fs.existsSync(script)) {
@@ -751,6 +937,12 @@ async function startHunyuanServer() {
     });
     hunyuanServerProc.on('exit', () => {
       hunyuanServerProc = null;
+      if (hunyuanStopping || hunyuanRestartAttempts >= HUNYUAN_MAX_RESTARTS) return;
+      hunyuanRestartAttempts += 1;
+      const delay = nextRestartDelayMs(hunyuanRestartAttempts);
+      setTimeout(() => {
+        if (!hunyuanStopping) startHunyuanServer();
+      }, delay).unref?.();
     });
   } catch (err) {
     console.warn('[hunyuan] échec du démarrage du serveur 3D :', err.message);
@@ -758,6 +950,7 @@ async function startHunyuanServer() {
 }
 
 function stopHunyuanServer() {
+  hunyuanStopping = true;
   if (hunyuanServerProc) {
     try {
       hunyuanServerProc.kill('SIGTERM');
@@ -815,6 +1008,8 @@ ipcMain.handle('hunyuan:install', async () => {
   if (hunyuanInstallProc) {
     return { ok: false, error: 'La instalación del motor ya está en curso.' };
   }
+  const space = assertFreeSpace(HUNYUAN_SERVER_DIR, MIN_ENGINE_INSTALL_FREE_BYTES, 'Instalación del motor 3D');
+  if (!space.ok) return space;
   let installedVersion = '';
   try { installedVersion = fs.readFileSync(path.join(HUNYUAN_SERVER_DIR, '.installed'), 'utf8').trim(); } catch {}
   const installed =
@@ -881,9 +1076,17 @@ ipcMain.handle('hunyuan:pickImage', async () => {
 // Start a job and poll until done. The mesh build is long (~9 min), so we poll
 // the server's job status rather than holding one giant request.
 ipcMain.handle('hunyuan:generate3D', async (event, params) => {
-  const { imageBase64, steps, octree, texture, targetFaces, scale, profile, category, guidance, backgroundMode, subjectPadding, mock } = params;
+  const { imageBase64, steps, octree, texture, textureSize, targetFaces, scale, profile, category, guidance, backgroundMode, subjectPadding, pivot, pivotCustom, upAxis, units, mock } = params;
   hunyuanCancelled = false;
   try {
+    event.sender.send('hunyuan:progress', {
+      stage: 'Liberando memoria para Hunyuan3D',
+      progress: 2,
+      percent: 2,
+      remaining: null,
+      status: 'starting',
+    });
+    await Promise.all([releaseOmlxGenerationMemory(), releaseOllamaGenerationMemory()]);
     event.sender.send('hunyuan:progress', {
       stage: 'Preparando referencia',
       progress: 4,
@@ -900,6 +1103,7 @@ ipcMain.handle('hunyuan:generate3D', async (event, params) => {
         steps: steps || 30,
         octree_resolution: octree || 256,
         texture: !!texture,
+        texture_size: textureSize === '1K' ? '1K' : '2K',
         target_faces: targetFaces || 50000,
         scale_meters: scale || 1,
         profile: profile || 'xreal',
@@ -907,11 +1111,20 @@ ipcMain.handle('hunyuan:generate3D', async (event, params) => {
         guidance: guidance || 6.0,
         background_mode: backgroundMode || 'auto',
         subject_padding: subjectPadding || 0.16,
+        pivot: pivot || 'center',
+        pivot_custom: Array.isArray(pivotCustom) ? pivotCustom : null,
+        up_axis: upAxis || 'y',
+        units: units || 'm',
         mock: !!mock,
       },
     });
     if (startRes.statusCode !== 200) {
-      return { ok: false, error: `Serveur 3D: HTTP ${startRes.statusCode}` };
+      let error = `Serveur 3D: HTTP ${startRes.statusCode}`;
+      try {
+        const parsed = JSON.parse(startRes.body);
+        error = parsed.detail || parsed.error || error;
+      } catch {}
+      return { ok: false, error };
     }
     const { job_id } = JSON.parse(startRes.body);
     hunyuanActiveJobId = job_id;
@@ -923,7 +1136,7 @@ ipcMain.handle('hunyuan:generate3D', async (event, params) => {
         hunyuanActiveJobId = null;
         return { ok: false, cancelled: true };
       }
-      await new Promise((r) => setTimeout(r, 2000));
+      await new Promise((r) => setTimeout(r, 1000));
       const s = await hunyuanRequest({
         method: 'GET',
         pathName: `/status/${job_id}`,
@@ -932,6 +1145,7 @@ ipcMain.handle('hunyuan:generate3D', async (event, params) => {
       const js = JSON.parse(s.body);
       event.sender.send('hunyuan:progress', {
         jobId: job_id,
+        state: js.state,
         stage: js.stage || 'Procesando',
         progress: Number.isFinite(js.progress) ? js.progress : 0,
         percent: Number.isFinite(js.progress) ? js.progress : 0,
@@ -945,12 +1159,22 @@ ipcMain.handle('hunyuan:generate3D', async (event, params) => {
           ok: true,
           glbBase64: buf.toString('base64'),
           glbPath: js.glb_path,
+          lodPaths: js.lod_paths,
           faces: js.faces,
           duration: js.elapsed,
           reportPath: js.report_path,
           qualityLevel: js.quality_level,
           qualityScore: js.quality_score,
           qualityText: js.quality_text,
+          textureApplied: !!js.texture_applied,
+          textureRequested: !!js.texture_requested,
+          textureSize: js.texture_size,
+          textureReport: js.texture_report,
+          shapeGlbPath: js.shape_glb_path,
+          pivot: js.pivot,
+          pivotCustom: js.pivot_custom,
+          upAxis: js.up_axis,
+          units: js.units,
         };
       }
       if (js.status === 'error') {
@@ -987,6 +1211,38 @@ ipcMain.handle('hunyuan:convertStl', async (_event, { glbPath, targetMm }) => {
     });
     if (r.statusCode !== 200) return { ok: false, error: `HTTP ${r.statusCode}` };
     return JSON.parse(r.body);
+  } catch (err) {
+    if (err.code === 'ECONNREFUSED') {
+      return { ok: false, error: 'Serveur 3D non démarré.' };
+    }
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.handle('hunyuan:textureGlb', async (_event, { glbPath, imageBase64, textureSize }) => {
+  try {
+    const r = await hunyuanRequest({
+      method: 'POST',
+      pathName: '/texture',
+      timeout: 1200000,
+      body: {
+        glb_path: glbPath,
+        image_base64: imageBase64,
+        texture_size: textureSize === '1K' ? '1K' : '2K',
+      },
+    });
+    if (r.statusCode !== 200) return { ok: false, error: `HTTP ${r.statusCode}` };
+    const js = JSON.parse(r.body);
+    if (!js.ok) return js;
+    const buf = await fsp.readFile(js.glb_path);
+    return {
+      ok: true,
+      glbBase64: buf.toString('base64'),
+      glbPath: js.glb_path,
+      textureApplied: !!js.texture_applied,
+      textureSize: js.texture_size,
+      textureReport: js.texture_report,
+    };
   } catch (err) {
     if (err.code === 'ECONNREFUSED') {
       return { ok: false, error: 'Serveur 3D non démarré.' };
@@ -1041,6 +1297,14 @@ function createWindow() {
   }
 }
 
+if (gotSingleInstanceLock) {
+app.on('second-instance', () => {
+  const [win] = BrowserWindow.getAllWindows();
+  if (!win) return;
+  if (win.isMinimized()) win.restore();
+  win.focus();
+});
+
 app.whenReady().then(() => {
   ensureDir(APP_SUPPORT_DIR);
   prepareHunyuanEngineFiles();
@@ -1057,6 +1321,7 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
+}
 
 // Shut the 3D server down with the app (only if we started it).
 app.on('before-quit', stopHunyuanServer);

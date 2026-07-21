@@ -1,6 +1,6 @@
 {
   "name": "xreality-convert",
-  "version": "1.2.3",
+  "version": "1.2.8",
   "description": "Conversor local de referencias a activos 3D optimizados para Xreality y spatial computing",
   "author": "Brujo2020",
   "license": "MIT",
@@ -11,7 +11,8 @@
     "dev:vite": "vite",
     "dev:electron": "wait-on tcp:5173 && cross-env NODE_ENV=development electron .",
     "start": "npm run dev",
-    "test:tools": "node --test electron/tool-registry.test.js src/lib/toolSummary.test.js engine/setup.test.js",
+    "test:engine": "python3 -m unittest engine.test_job_queue engine.test_storage engine.test_job_logging engine.test_pipeline_states engine.test_geometry_delivery engine.test_paint_service",
+    "test:tools": "node --test electron/tool-registry.test.js electron/process-backoff.test.js electron/file-sync.test.js electron/ollama-response.test.js electron/model-routing.test.js src/lib/toolSummary.test.js src/lib/promptEnrichment.test.js src/lib/deliveryEstimates.test.js src/lib/lowPolySkill.test.js src/lib/uiStatus.test.js src/lib/errorActions.test.js src/lib/assetNaming.test.js engine/setup.test.js && npm run test:engine",
     "build:vite": "vite build",
     "build": "npm run build:vite && electron-builder",
     "preview": "vite preview"
@@ -41,12 +42,30 @@
     "icon": "build/icon.icns",
     "asarUnpack": [
       "engine/server.py",
+      "engine/job_queue.py",
+      "engine/job_logging.py",
+      "engine/geometry_delivery.py",
+      "engine/storage.py",
+      "engine/pipeline_states.py",
+      "engine/pipeline_states.json",
+      "engine/paint_service.py",
+      "engine/pbr_glb.py",
+      "engine/Hunyuan3D-2.1-mlx/hy3dpaint/**/*",
       "engine/setup.sh"
     ],
     "files": [
       "build/**/*",
       "electron/**/*",
       "engine/server.py",
+      "engine/job_queue.py",
+      "engine/job_logging.py",
+      "engine/geometry_delivery.py",
+      "engine/storage.py",
+      "engine/pipeline_states.py",
+      "engine/pipeline_states.json",
+      "engine/paint_service.py",
+      "engine/pbr_glb.py",
+      "engine/Hunyuan3D-2.1-mlx/hy3dpaint/**/*",
       "engine/setup.sh",
       "dist/**/*"
     ],

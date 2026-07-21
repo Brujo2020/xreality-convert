@@ -1,7 +1,19 @@
 import React from 'react';
 import { XR_PROFILES } from '../lib/xrProfiles.js';
+import { getControlStatus } from '../lib/uiStatus.js';
 
-export default function XrProductionPanel({ asset, setAsset, setSteps3d, disabled }) {
+const CONTROL_BADGES = {
+  recommended: ['Recomendado', 'border-cyan-300/15 bg-cyan-300/5 text-cyan-200'],
+  modified: ['Modificado', 'border-amber-300/15 bg-amber-300/5 text-amber-200'],
+  out: ['Fuera de rango', 'border-rose-300/15 bg-rose-300/5 text-rose-200'],
+};
+
+function ControlBadge({ status }) {
+  const [label, className] = CONTROL_BADGES[status] || CONTROL_BADGES.modified;
+  return <span className={`rounded-md border px-1.5 py-0.5 font-mono text-[7px] uppercase tracking-wider ${className}`}>{label}</span>;
+}
+
+export default function XrProductionPanel({ asset, recommended, setAsset, setSteps3d, disabled, onReset }) {
   const update = (patch) => setAsset((current) => ({ ...current, ...patch }));
   const selectProfile = (id) => {
     const profile = XR_PROFILES[id];
@@ -15,6 +27,9 @@ export default function XrProductionPanel({ asset, setAsset, setSteps3d, disable
     setSteps3d(profile.steps);
   };
   const current = XR_PROFILES[asset.profile];
+  const facesStatus = getControlStatus(asset.targetFaces, recommended?.targetFaces ?? current.targetFaces, { min: 1000, max: 500000 });
+  const textureStatus = getControlStatus(asset.textureSize, current.textureSize);
+  const scaleStatus = getControlStatus(asset.scale, recommended?.scale ?? current.scale, { min: 0.01, max: 100, tolerance: 0.001 });
 
   return (
     <section className="glass-card overflow-hidden rounded-2xl">
@@ -23,9 +38,20 @@ export default function XrProductionPanel({ asset, setAsset, setSteps3d, disable
           <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-cyan-400/70">Destino</p>
           <h2 className="mt-1 text-sm font-semibold text-white">Perfil de entrega</h2>
         </div>
-        <div className="rounded-lg border border-cyan-300/15 bg-cyan-300/5 px-2 py-1 text-right">
-          <span className="block font-mono text-[9px] text-cyan-200">{Math.round(asset.targetFaces / 1000)}K</span>
-          <span className="block text-[7px] uppercase tracking-wider text-slate-500">caras máx.</span>
+        <div className="flex items-center gap-2">
+          {onReset && (
+            <button
+              disabled={disabled}
+              onClick={onReset}
+              className="rounded-lg border border-sky-300/15 bg-sky-300/5 px-2 py-1 text-[9px] font-semibold text-sky-100 transition hover:bg-sky-300/10 disabled:opacity-40"
+            >
+              Restaurar
+            </button>
+          )}
+          <div className="rounded-lg border border-cyan-300/15 bg-cyan-300/5 px-2 py-1 text-right">
+            <span className="block font-mono text-[9px] text-cyan-200">{Math.round(asset.targetFaces / 1000)}K</span>
+            <span className="block text-[7px] uppercase tracking-wider text-slate-500">caras máx.</span>
+          </div>
         </div>
       </div>
 
@@ -57,7 +83,7 @@ export default function XrProductionPanel({ asset, setAsset, setSteps3d, disable
         </div>
         <div className="grid grid-cols-2 gap-2">
           <label className="text-[9px] uppercase tracking-wider text-slate-500">
-            Geometría
+            <span className="flex items-center justify-between gap-2">Geometría <ControlBadge status={facesStatus} /></span>
             <select value={asset.targetFaces} disabled={disabled} onChange={(event) => update({ targetFaces: Number(event.target.value) })} className="field-modern mt-1.5 !py-2">
               <option value={12000}>12K · Low poly</option>
               <option value={20000}>20K · Móvil</option>
@@ -67,13 +93,13 @@ export default function XrProductionPanel({ asset, setAsset, setSteps3d, disable
             </select>
           </label>
           <label className="text-[9px] uppercase tracking-wider text-slate-500">
-            Material
+            <span className="flex items-center justify-between gap-2">Material <ControlBadge status={textureStatus} /></span>
             <select value={asset.textureSize} disabled={disabled} onChange={(event) => update({ textureSize: event.target.value, texture: event.target.value !== 'Sin textura' })} className="field-modern mt-1.5 !py-2">
               <option>Sin textura</option><option>1K</option><option>2K</option>
             </select>
           </label>
           <label className="col-span-2 text-[9px] uppercase tracking-wider text-slate-500">
-            Tamaño real del activo
+            <span className="flex items-center justify-between gap-2">Tamaño real del activo <ControlBadge status={scaleStatus} /></span>
             <div className="mt-1.5 flex items-center rounded-xl border border-sky-200/10 bg-black/20 pr-3">
               <input type="number" min="0.01" max="100" step="0.01" value={asset.scale} disabled={disabled} onChange={(event) => update({ scale: Number(event.target.value) || 1 })} className="min-w-0 flex-1 bg-transparent px-3 py-2 text-xs text-white outline-none" />
               <span className="font-mono text-[9px] text-sky-300">METROS</span>
