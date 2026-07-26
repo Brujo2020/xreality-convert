@@ -467,7 +467,6 @@ export default function App() {
       mode,
       modelCategory,
       asset.profile,
-      asset.texture,
       asset.textureSize,
       Boolean(image3dInput),
       Boolean(prompt.trim()),
@@ -478,7 +477,7 @@ export default function App() {
       mode,
       category: modelCategory,
       profile: asset.profile,
-      texture: asset.texture,
+      texture: false,
       textureSize: asset.textureSize,
       inputReady: mode === 'image3d' ? Boolean(image3dInput) : Boolean(prompt.trim()),
     }).then((preview) => {
@@ -490,7 +489,7 @@ export default function App() {
     return () => {
       mounted = false;
     };
-  }, [asset.profile, asset.texture, asset.textureSize, image3dInput, mode, modelCategory, processing, prompt]);
+  }, [asset.profile, asset.textureSize, image3dInput, mode, modelCategory, processing, prompt]);
 
   // Poll the local 3D server's health (only meaningful in image3d mode).
   useEffect(() => {
@@ -603,6 +602,7 @@ export default function App() {
   // --- Generate (branches on mode) ------------------------------------------
   const handleGenerate = useCallback(async () => {
     const generationAsset = safeGenerationAsset(modelCategory, asset);
+    const shapeFirstAsset = { ...generationAsset, texture: false };
     if (generationAsset !== asset) setAsset(generationAsset);
 
     if (mode === 'image3d' && !image3dInput) {
@@ -625,8 +625,8 @@ export default function App() {
       const startedMission = await window.superagents.start({
         mode,
         category: modelCategory,
-        profile: generationAsset.profile,
-        texture: generationAsset.texture,
+        profile: shapeFirstAsset.profile,
+        texture: shapeFirstAsset.texture,
         textureSize: generationAsset.textureSize,
         inputReady: mode === 'image3d' ? Boolean(image3dInput) : Boolean(prompt.trim()),
       });
@@ -647,7 +647,7 @@ export default function App() {
         imageBase64: image3dInput.base64,
         steps: steps3d,
         octree: generationAsset.octree,
-        texture: generationAsset.texture,
+        texture: shapeFirstAsset.texture,
         textureSize: generationAsset.textureSize,
         materialProfile: generationAsset.materialProfile || 'auto',
         targetFaces: generationAsset.targetFaces,
@@ -787,7 +787,7 @@ export default function App() {
       imageBase64: reference.image,
       steps: steps3d,
       octree: generationAsset.octree,
-      texture: generationAsset.texture,
+      texture: shapeFirstAsset.texture,
       textureSize: generationAsset.textureSize,
       materialProfile: generationAsset.materialProfile || 'auto',
       targetFaces: generationAsset.targetFaces,

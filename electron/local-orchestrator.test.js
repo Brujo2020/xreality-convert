@@ -63,6 +63,28 @@ test('text to 3D mission builds a dependency-ordered specialist DAG', () => {
   assert.deepEqual(mission.tasks.at(-1).dependencies, ['quality.pbr_gate']);
 });
 
+test('shape-first mission defers Paint to a separate optional mission', () => {
+  const mission = orchestrator().preview({
+    mode: 'image3d',
+    category: 'animal',
+    profile: 'xreal',
+    texture: false,
+    textureSize: '1K',
+    inputReady: true,
+  });
+  assert.deepEqual(
+    mission.tasks.map((item) => item.skillId),
+    [
+      'reference.guard',
+      'geometry.reconstruct',
+      'geometry.audit',
+      'delivery.canonicalize',
+      'delivery.manifest',
+    ]
+  );
+  assert.equal(mission.tasks.some((item) => item.skillId === 'material.paint'), false);
+});
+
 test('pipeline events advance the actual agent and never regress completed work', () => {
   const local = orchestrator();
   local.start({ mode: 'image3d', texture: true });

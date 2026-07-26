@@ -130,8 +130,8 @@ function TexturePbrControl({ asset, setAsset, disabled }) {
       </div>
       <div className={`mt-2 rounded-xl border px-3 py-2 ${asset.texture ? 'border-cyan-300/20 bg-cyan-300/5' : 'border-amber-300/15 bg-amber-300/5'}`}>
         <div className="flex items-center justify-between gap-2">
-          <span className="text-[10px] font-medium text-slate-200">{asset.texture ? 'Paint MLX se ejecutara en el proximo render' : 'Salida shape-only: material gris'}</span>
-          <span className="font-mono text-[8px] uppercase tracking-wider text-cyan-200">{asset.texture ? `${asset.textureSize} activo` : 'gris'}</span>
+          <span className="text-[10px] font-medium text-slate-200">Primero se genera el GLB gris; Paint es el paso opcional siguiente</span>
+          <span className="font-mono text-[8px] uppercase tracking-wider text-cyan-200">{asset.texture ? `${asset.textureSize} preparado` : 'opcional'}</span>
         </div>
       </div>
       <label className="mt-2 block text-[9px] uppercase tracking-wider text-slate-500">
