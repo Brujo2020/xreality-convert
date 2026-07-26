@@ -1,6 +1,6 @@
 ORGANIC_DELIVERY_DEFAULTS = {
-    "animal": {"profile": "xreal", "steps": 50, "octree_resolution": 256, "target_faces": 100000, "texture": True, "texture_size": "2K", "guidance": 7.5},
-    "person": {"profile": "pcvr", "steps": 50, "octree_resolution": 256, "target_faces": 120000, "texture": True, "texture_size": "2K", "guidance": 7.0},
+    "animal": {"profile": "xreal", "steps": 50, "octree_resolution": 256, "target_faces": 100000, "texture": True, "texture_size": "1K", "guidance": 7.5},
+    "person": {"profile": "pcvr", "steps": 50, "octree_resolution": 256, "target_faces": 120000, "texture": True, "texture_size": "1K", "guidance": 7.0},
 }
 
 

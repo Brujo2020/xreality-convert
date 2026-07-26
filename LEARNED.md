@@ -15,6 +15,9 @@
 2026-07-22: Texture references alone do not prove a self-contained GLB; require referenced `bufferView` image bytes with a valid PNG/JPEG/WebP signature.
 2026-07-22: COST T3, 2 verify iterations, pass.
 2026-07-26: Un test de catálogo no debe buscar `exec` sobre el JSON completo porque coincide con la clave segura `executor`; validar URLs/comandos prohibidos y allowlist por separado.
+2026-07-26: Root cause de VERIFY fallido: el entorno Python del motor está en `engine/venv`, no en `.venv`; usar `engine/venv/bin/python`.
+2026-07-26: Los unittest del engine importan módulos vecinos como top-level; ejecutarlos con `cwd=engine`, no desde la raíz.
+2026-07-26: Un fixture de segmentación no debe tocar el borde: `_foreground_mask` estima el fondo desde esos píxeles y altera el resultado.
 2026-07-26: En React StrictMode no marcar un preview async como resuelto antes del `then`; el cleanup del primer efecto puede descartar el resultado y bloquear la segunda ejecución.
 2026-07-26: COST T3, 3 audit agents, 2 verify iterations, pass.
 2026-07-24: Un gate GLB estructural no detecta una textura semánticamente mala; anclar la vista frontal a la imagen fuente y reservar difusión para zonas ocultas preserva identidad sin cambiar la geometría.

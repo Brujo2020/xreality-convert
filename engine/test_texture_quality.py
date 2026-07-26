@@ -56,6 +56,19 @@ class TextureQualityTest(unittest.TestCase):
         self.assertFalse(report["passed"])
         self.assertEqual(report["reason"], "silhouette_aspect_mismatch")
 
+    def test_rejects_weak_silhouette_overlap(self):
+        reference = Image.new("RGB", (100, 100), "white")
+        ImageDraw.Draw(reference).rectangle((20, 10, 79, 89), fill=(180, 70, 30))
+        geometry = Image.new("RGB", (100, 100), "black")
+        geometry_draw = ImageDraw.Draw(geometry)
+        geometry_draw.rectangle((45, 10, 54, 89), fill="white")
+        geometry_draw.rectangle((20, 45, 79, 54), fill="white")
+
+        aligned, report = align_reference_to_geometry(reference, geometry, (100, 100))
+
+        self.assertIsNone(aligned)
+        self.assertFalse(report["passed"])
+        self.assertEqual(report["reason"], "silhouette_overlap_too_low")
 
 if __name__ == "__main__":
     unittest.main()

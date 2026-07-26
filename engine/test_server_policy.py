@@ -24,7 +24,7 @@ class ServerPolicyTest(unittest.TestCase):
         self.assertEqual(normalized.steps, 50)
         self.assertEqual(normalized.octree_resolution, 256)
         self.assertEqual(normalized.target_faces, 100000)
-        self.assertEqual(normalized.texture_size, "2K")
+        self.assertEqual(normalized.texture_size, "1K")
 
     def test_lowpoly_remains_available_for_non_organic_assets(self):
         request = SimpleNamespace(

@@ -97,7 +97,7 @@ def align_reference_to_geometry(reference, geometry_render, size):
     intersection = np.logical_and(aligned_mask, geometry_mask).sum()
     silhouette_iou = float(intersection / union) if union else 0.0
     report["silhouette_iou"] = silhouette_iou
-    if silhouette_iou < 0.35:
+    if silhouette_iou < 0.6:
         report["reason"] = "silhouette_overlap_too_low"
         return None, report
 
