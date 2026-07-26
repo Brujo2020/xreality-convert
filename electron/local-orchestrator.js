@@ -186,7 +186,7 @@ class LocalMissionOrchestrator {
   transition(missionId, event = {}) {
     const mission = this.missions.get(missionId);
     if (!mission || TERMINAL_STATUSES.has(mission.status)) return this.get(missionId);
-    const at = this.now();
+    const at = Math.max(this.now(), mission.updatedAt + 1);
     if (event.type === 'failed' || event.type === 'cancelled') {
       const current = mission.tasks.find((item) => item.status === 'running');
       if (current) {

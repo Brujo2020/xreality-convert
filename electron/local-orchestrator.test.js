@@ -156,6 +156,22 @@ test('done closes only the final expert with explicit evidence', () => {
   assert.equal(done.tasks.at(-1).evidence.type, 'pipeline-complete');
 });
 
+test('same-millisecond final events receive monotonic timestamps', () => {
+  const local = new LocalMissionOrchestrator({
+    catalog,
+    now: () => 1_000,
+    idFactory: () => 'mission-frozen-clock',
+  });
+  local.start({ mode: 'texture', texture: true });
+  const manifest = local.transition('mission-frozen-clock', {
+    type: 'stage',
+    skillId: 'delivery.manifest',
+  });
+  const done = local.transition('mission-frozen-clock', { type: 'done' });
+  assert.equal(done.status, 'done');
+  assert.ok(done.updatedAt > manifest.updatedAt);
+});
+
 test('failure is terminal and records the bounded local error', () => {
   const local = orchestrator();
   local.start({ mode: 'image' });
