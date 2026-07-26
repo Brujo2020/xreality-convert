@@ -1,7 +1,7 @@
 export const XR_PROFILES = {
   lowpoly: {
-    label: 'Low Poly', icon: '◇', description: 'Props ligeros y estilo estilizado',
-    octree: 128, steps: 20, texture: false, targetFaces: 12000, textureSize: 'Sin textura', scale: 1,
+    label: 'Low Poly', icon: '◇', description: 'Malla ligera desde una reconstrucción limpia de alta fidelidad',
+    octree: 192, steps: 35, texture: false, targetFaces: 12000, textureSize: 'Sin textura', scale: 1,
   },
   mobile: {
     label: 'Móvil AR', icon: '◌', description: 'WebAR, redes y dispositivos móviles',

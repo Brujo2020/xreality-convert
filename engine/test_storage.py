@@ -40,6 +40,19 @@ class StorageTest(unittest.TestCase):
             self.assertTrue(old_glb.exists())
             self.assertTrue(recent_png.exists())
 
+    def test_cleanup_old_temporaries_does_not_block_server_on_unremovable_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            blocked = root / "blocked.png"
+            blocked.write_text("x")
+            os.utime(blocked, (100, 100))
+
+            with mock.patch.object(Path, "unlink", side_effect=PermissionError("blocked")):
+                removed = storage.cleanup_old_temporaries(root, older_than_seconds=300, now=1000)
+
+            self.assertEqual(removed, [])
+            self.assertTrue(blocked.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -3,6 +3,7 @@ import Header from './components/Header.jsx';
 import PromptPanel from './components/PromptPanel.jsx';
 import ImageViewer from './components/ImageViewer.jsx';
 import Gallery from './components/Gallery.jsx';
+import SuperagentMissionControl from './components/SuperagentMissionControl.jsx';
 import { XR_PROFILES } from './lib/xrProfiles.js';
 import { USE_CASES } from './lib/useCases.js';
 import { MODEL_CATEGORIES } from './lib/modelCategories.js';
@@ -10,11 +11,14 @@ import { getPipelineState } from './lib/pipelineStates.js';
 import { enrichImagePrompt } from './lib/promptEnrichment.js';
 import { estimateImage3dDelivery } from './lib/deliveryEstimates.js';
 import { assetFilename, buildAssetName } from './lib/assetNaming.js';
+import { restoreCategoryDelivery } from './lib/lowPolySkill.js';
 
 const IMAGE_MODEL = 'x/z-image-turbo:latest';
 const PREFERRED_IMAGE_MODELS = ['x/flux2-klein:latest', 'x/flux2-klein', IMAGE_MODEL];
 const MAX_HISTORY = 20;
 const PERSONAL_PRESETS_KEY = 'xrealityConvert.personalPresets.v1';
+const ORGANIC_CATEGORIES = new Set(['animal', 'person']);
+const MATERIAL_PROFILE_BY_CATEGORY = { animal: 'animal', person: 'person' };
 
 // Models we prefer for STL code generation, in order. Falls back to the first
 // available text model if none of these are installed.
@@ -42,6 +46,13 @@ function timestampName(seed, ext) {
   return `${stamp}-${seed}.${ext}`;
 }
 
+function safeGenerationAsset(categoryId, asset) {
+  if (asset?.profile === 'lowpoly' && ORGANIC_CATEGORIES.has(categoryId)) {
+    return restoreCategoryDelivery(categoryId, asset);
+  }
+  return asset;
+}
+
 // Image generators are filtered out of the STL model list.
 const isImageModel = (name) => !name.startsWith('oMLX · ') && /z-image|flux/i.test(name);
 
@@ -51,6 +62,7 @@ function recommendedAssetForCategory(id) {
   return {
     ...profile,
     profile: category.profile,
+    materialProfile: MATERIAL_PROFILE_BY_CATEGORY[id] || 'auto',
     octree: category.octree,
     targetFaces: category.targetFaces,
     scale: category.scale,
@@ -68,6 +80,8 @@ export default function App() {
   });
   const [toolSnapshot, setToolSnapshot] = useState(null);
   const [toolsChecking, setToolsChecking] = useState(true);
+  const [mission, setMission] = useState(null);
+  const [localSkillCount, setLocalSkillCount] = useState(0);
 
   // --- Conversión: texto o imagen hacia un activo 3D ---
   const [mode, setMode] = useState('image3d');
@@ -86,6 +100,10 @@ export default function App() {
     height: 1024,
     steps: 8,
     seed: randomSeed(),
+    lighting: 'studio',
+    view: 'threeQuarter',
+    background: 'plain',
+    customInstructions: '',
   });
 
   // --- Image -> 3D (Hunyuan, via local Python server) ---
@@ -99,7 +117,7 @@ export default function App() {
   const [upAxis, setUpAxis] = useState('y');
   const [units, setUnits] = useState('m');
   const [stlMm, setStlMm] = useState(60); // target longest-axis size for STL export
-  const [asset, setAsset] = useState({ profile: 'xreal', ...XR_PROFILES.xreal });
+  const [asset, setAsset] = useState({ profile: 'xreal', materialProfile: 'auto', ...XR_PROFILES.xreal });
   const [hunyuanUp, setHunyuanUp] = useState(false);
   const [hunyuanHealth, setHunyuanHealth] = useState(null);
   const [installingEngine, setInstallingEngine] = useState(false);
@@ -120,6 +138,7 @@ export default function App() {
   const hasInitImageModel = useRef(false);
   const hasAttemptedEngineBootstrap = useRef(false);
   const hasCheckedLocalTools = useRef(false);
+  const missionPreviewKey = useRef('');
   const processing = generating || installingEngine || installingModel;
 
   const resetOverrides = useCallback(() => setManualOverrides(new Set()), []);
@@ -419,6 +438,60 @@ export default function App() {
     checkLocalTools();
   }, [checkLocalTools]);
 
+  useEffect(() => {
+    let mounted = true;
+    window.superagents.listSkills()
+      .then((catalog) => {
+        if (mounted) setLocalSkillCount(catalog?.skills?.length || 0);
+      })
+      .catch(() => {
+        if (mounted) setLocalSkillCount(0);
+      });
+    window.superagents.active()
+      .then((activeMission) => {
+        if (mounted && activeMission) setMission(activeMission);
+      })
+      .catch(() => {});
+    const unsubscribe = window.superagents.onMission((nextMission) => {
+      if (mounted) setMission(nextMission);
+    });
+    return () => {
+      mounted = false;
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (processing) return undefined;
+    const key = JSON.stringify([
+      mode,
+      modelCategory,
+      asset.profile,
+      asset.texture,
+      asset.textureSize,
+      Boolean(image3dInput),
+      Boolean(prompt.trim()),
+    ]);
+    if (missionPreviewKey.current === key) return undefined;
+    let mounted = true;
+    window.superagents.preview({
+      mode,
+      category: modelCategory,
+      profile: asset.profile,
+      texture: asset.texture,
+      textureSize: asset.textureSize,
+      inputReady: mode === 'image3d' ? Boolean(image3dInput) : Boolean(prompt.trim()),
+    }).then((preview) => {
+      if (mounted) {
+        missionPreviewKey.current = key;
+        setMission(preview);
+      }
+    }).catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, [asset.profile, asset.texture, asset.textureSize, image3dInput, mode, modelCategory, processing, prompt]);
+
   // Poll the local 3D server's health (only meaningful in image3d mode).
   useEffect(() => {
     let active = true;
@@ -442,8 +515,28 @@ export default function App() {
 
   // --- Load persisted history on mount --------------------------------------
   useEffect(() => {
-    window.ollama.loadHistory().then((items) => {
-      if (Array.isArray(items)) setHistory(items.slice(0, MAX_HISTORY));
+    Promise.all([
+      window.ollama.loadHistory(),
+      window.hunyuan.recoverCompleted3D?.() || Promise.resolve([]),
+    ]).then(([items, recovered]) => {
+      const current = Array.isArray(items) ? items : [];
+      const knownPaths = new Set(current.map((item) => item.glbPath).filter(Boolean));
+      const restored = (Array.isArray(recovered) ? recovered : [])
+        .filter((item) => !knownPaths.has(item.glbPath))
+        .map((item) => ({
+          ...item,
+          id: `recovered-${item.jobId}`,
+          type: 'glb',
+          assetName: `recuperado-${item.jobId.slice(0, 8)}-${item.category}-${item.profile}`,
+          prompt: 'Job local recuperado automáticamente',
+          model: 'hunyuan3d-2.1-mlx',
+          textured: item.textureApplied,
+          materialProfile: item.textureReport?.material_profile || 'auto',
+          filePath: null,
+        }));
+      const next = [...restored, ...current].slice(0, MAX_HISTORY);
+      setHistory(next);
+      if (restored.length) window.ollama.saveHistory(next);
     });
   }, []);
 
@@ -509,24 +602,57 @@ export default function App() {
 
   // --- Generate (branches on mode) ------------------------------------------
   const handleGenerate = useCallback(async () => {
+    const generationAsset = safeGenerationAsset(modelCategory, asset);
+    if (generationAsset !== asset) setAsset(generationAsset);
+
+    if (mode === 'image3d' && !image3dInput) {
+      setError('Selecciona una imagen de referencia.');
+      return;
+    }
+    if (mode !== 'image3d' && !prompt.trim()) {
+      setError('Escribe una dirección creativa antes de generar.');
+      return;
+    }
+    if (mode === 'stl' && (!imageModelAvailable || !hunyuanUp)) {
+      setError(!imageModelAvailable
+        ? 'Instala o selecciona FLUX para crear la referencia 3D.'
+        : 'Inicializa Hunyuan3D MLX antes de modelar.');
+      return;
+    }
+
+    let missionId;
+    try {
+      const startedMission = await window.superagents.start({
+        mode,
+        category: modelCategory,
+        profile: generationAsset.profile,
+        texture: generationAsset.texture,
+        textureSize: generationAsset.textureSize,
+        inputReady: mode === 'image3d' ? Boolean(image3dInput) : Boolean(prompt.trim()),
+      });
+      missionId = startedMission.id;
+      setMission(startedMission);
+    } catch (missionError) {
+      setError(`Mission Control no pudo iniciar: ${missionError.message}`);
+      return;
+    }
+
     // --- Image -> 3D mode (Hunyuan, no prompt) ---
     if (mode === 'image3d') {
-      if (!image3dInput) {
-        setError('Selecciona una imagen de referencia.');
-        return;
-      }
       setError(null);
       setGenerating(true);
       setProgress({ percent: 0, label: 'Enviando referencia…', remaining: null });
       const res = await window.hunyuan.generate3D({
+        missionId,
         imageBase64: image3dInput.base64,
         steps: steps3d,
-        octree: asset.octree,
-        texture: asset.texture,
-        textureSize: asset.textureSize,
-        targetFaces: asset.targetFaces,
-        scale: asset.scale,
-        profile: asset.profile,
+        octree: generationAsset.octree,
+        texture: generationAsset.texture,
+        textureSize: generationAsset.textureSize,
+        materialProfile: generationAsset.materialProfile || 'auto',
+        targetFaces: generationAsset.targetFaces,
+        scale: generationAsset.scale,
+        profile: generationAsset.profile,
         category: modelCategory,
         guidance: guidance3d,
         backgroundMode,
@@ -547,11 +673,19 @@ export default function App() {
       const assetName = buildAssetName({
         sourceName: image3dInput.name,
         category: modelCategory,
-        profile: asset.profile,
+        profile: generationAsset.profile,
         createdAt,
       });
+      const referencePath = await window.hunyuan.cacheReference({
+        dataUrl: image3dInput.dataUrl,
+        filename: `${assetName}-reference`,
+      });
+      const shapeGlbBase64 = res.shapeGlbPath
+        ? await window.hunyuan.readGlb(res.shapeGlbPath)
+        : null;
       const entry = {
         id: `${createdAt}-3d`,
+        missionId,
         type: 'glb',
         assetName,
         glbBase64: res.glbBase64,
@@ -563,17 +697,21 @@ export default function App() {
         qualityLevel: res.qualityLevel,
         qualityScore: res.qualityScore,
         qualityText: res.qualityText,
+        lowpolyRefinement: res.lowpolyRefinement,
         steps: steps3d,
         textured: res.textureApplied,
-        textureRequested: res.textureRequested ?? asset.texture,
+        textureRequested: res.textureRequested ?? generationAsset.texture,
         textureReport: res.textureReport,
         shapeGlbPath: res.shapeGlbPath,
-        profile: asset.profile,
-        targetFaces: asset.targetFaces,
-        textureSize: res.textureSize || asset.textureSize,
-        scale: asset.scale,
+        shapeGlbBase64,
+        profile: generationAsset.profile,
+        targetFaces: generationAsset.targetFaces,
+        textureSize: res.textureSize || generationAsset.textureSize,
+        materialProfile: generationAsset.materialProfile || 'auto',
+        scale: generationAsset.scale,
         prompt: image3dInput.name, // shown as the label
         inputDataUrl: image3dInput.dataUrl,
+        referencePath,
         model: 'hunyuan3d-2.1-mlx',
         category: modelCategory,
         guidance: guidance3d,
@@ -586,13 +724,8 @@ export default function App() {
         filePath: null,
       };
       setResult(entry);
-      const { glbBase64, inputDataUrl, ...light } = entry;
+      const { glbBase64, shapeGlbBase64: _shapeGlbBase64, inputDataUrl, ...light } = entry;
       persistHistory([light, ...history].slice(0, MAX_HISTORY));
-      return;
-    }
-
-    if (!prompt.trim()) {
-      setError('Escribe una dirección creativa antes de generar.');
       return;
     }
 
@@ -601,8 +734,9 @@ export default function App() {
     setGenerating(true);
 
     if (mode === 'image') {
-      const enrichedPrompt = enrichImagePrompt(prompt, modelCategory);
+      const enrichedPrompt = enrichImagePrompt(prompt, modelCategory, params);
       const res = await window.ollama.generate({
+        missionId,
         model: imageModel,
         prompt: enrichedPrompt,
         width: params.width,
@@ -621,29 +755,20 @@ export default function App() {
       const assetName = buildAssetName({
         prompt: prompt.trim(),
         category: modelCategory,
-        profile: asset.profile,
+        profile: generationAsset.profile,
         createdAt,
       });
-      const entry = { id: `${createdAt}-${usedSeed}`, type: 'image', assetName, image: res.image, prompt: prompt.trim(), enrichedPrompt, category: modelCategory, profile: asset.profile, model: imageModel, seed: usedSeed, width: params.width, height: params.height, steps: params.steps, duration: res.duration, createdAt, filePath: null };
+      const entry = { id: `${createdAt}-${usedSeed}`, missionId, type: 'image', assetName, image: res.image, prompt: prompt.trim(), enrichedPrompt, category: modelCategory, profile: generationAsset.profile, model: imageModel, seed: usedSeed, width: params.width, height: params.height, steps: params.steps, duration: res.duration, createdAt, filePath: null };
       setResult(entry);
       persistHistory([entry, ...history].slice(0, MAX_HISTORY));
       return;
     }
 
     // --- Texto → referencia → Hunyuan3D ---
-    if (!imageModelAvailable) {
-      setGenerating(false);
-      setError('Instala o selecciona FLUX para crear la referencia 3D.');
-      return;
-    }
-    if (!hunyuanUp) {
-      setGenerating(false);
-      setError('Inicializa Hunyuan3D MLX antes de modelar.');
-      return;
-    }
     setProgress({ percent: 2, label: 'Creando referencia limpia con FLUX', remaining: null });
-    const enrichedPrompt = enrichImagePrompt(prompt, modelCategory);
+    const enrichedPrompt = enrichImagePrompt(prompt, modelCategory, params);
     const reference = await window.ollama.generate({
+      missionId,
       model: imageModel,
       prompt: enrichedPrompt,
       width: params.width,
@@ -658,14 +783,16 @@ export default function App() {
     }
     setProgress({ percent: 12, label: 'Referencia lista · iniciando Hunyuan3D', remaining: null });
     const res = await window.hunyuan.generate3D({
+      missionId,
       imageBase64: reference.image,
       steps: steps3d,
-      octree: asset.octree,
-      texture: asset.texture,
-      textureSize: asset.textureSize,
-      targetFaces: asset.targetFaces,
-      scale: asset.scale,
-      profile: asset.profile,
+      octree: generationAsset.octree,
+      texture: generationAsset.texture,
+      textureSize: generationAsset.textureSize,
+      materialProfile: generationAsset.materialProfile || 'auto',
+      targetFaces: generationAsset.targetFaces,
+      scale: generationAsset.scale,
+      profile: generationAsset.profile,
       category: modelCategory,
       guidance: guidance3d,
       backgroundMode: 'remove',
@@ -686,11 +813,20 @@ export default function App() {
     const assetName = buildAssetName({
       prompt: prompt.trim(),
       category: modelCategory,
-      profile: asset.profile,
+      profile: generationAsset.profile,
       createdAt,
     });
+    const referenceDataUrl = `data:image/png;base64,${reference.image}`;
+    const referencePath = await window.hunyuan.cacheReference({
+      dataUrl: referenceDataUrl,
+      filename: `${assetName}-reference`,
+    });
+    const shapeGlbBase64 = res.shapeGlbPath
+      ? await window.hunyuan.readGlb(res.shapeGlbPath)
+      : null;
     const entry = {
       id: `${createdAt}-3d`,
+      missionId,
       type: 'glb',
       assetName,
       glbBase64: res.glbBase64,
@@ -701,23 +837,27 @@ export default function App() {
       qualityLevel: res.qualityLevel,
       qualityScore: res.qualityScore,
       qualityText: res.qualityText,
+      lowpolyRefinement: res.lowpolyRefinement,
       prompt: prompt.trim(),
       enrichedPrompt,
-      inputDataUrl: `data:image/png;base64,${reference.image}`,
+      inputDataUrl: referenceDataUrl,
+      referencePath,
       model: 'hunyuan3d-2.1-mlx',
       referenceModel: imageModel,
       seed: usedSeed,
       duration: res.duration,
       steps: steps3d,
       textured: res.textureApplied,
-      textureRequested: res.textureRequested ?? asset.texture,
+      textureRequested: res.textureRequested ?? generationAsset.texture,
       textureReport: res.textureReport,
       shapeGlbPath: res.shapeGlbPath,
-      profile: asset.profile,
+      shapeGlbBase64,
+      profile: generationAsset.profile,
       category: modelCategory,
-      targetFaces: asset.targetFaces,
-      textureSize: res.textureSize || asset.textureSize,
-      scale: asset.scale,
+      targetFaces: generationAsset.targetFaces,
+      textureSize: res.textureSize || generationAsset.textureSize,
+      materialProfile: generationAsset.materialProfile || 'auto',
+      scale: generationAsset.scale,
       guidance: guidance3d,
       backgroundMode: 'remove',
       pivot: res.pivot || pivot,
@@ -728,7 +868,7 @@ export default function App() {
       filePath: null,
     };
     setResult(entry);
-    const { glbBase64, inputDataUrl, ...lightEntry } = entry;
+    const { glbBase64, shapeGlbBase64: _shapeGlbBase64, inputDataUrl, ...lightEntry } = entry;
     persistHistory([lightEntry, ...history].slice(0, MAX_HISTORY));
   }, [
     prompt,
@@ -754,9 +894,11 @@ export default function App() {
   ]);
 
   const handleCancel = useCallback(() => {
-    if (mode === 'image3d') window.hunyuan.cancel3D();
-    else window.ollama.cancel();
-  }, [mode]);
+    Promise.allSettled([
+      window.ollama.cancel(),
+      window.hunyuan.cancel3D(),
+    ]);
+  }, []);
 
   // --- Save (branches on type) ----------------------------------------------
   const handleSave = useCallback(async () => {
@@ -811,18 +953,38 @@ export default function App() {
 
   const handleTextureGlb = useCallback(async () => {
     if (!result || result.type !== 'glb') return false;
-    if (!result.inputDataUrl) {
+    const referenceDataUrl = result.inputDataUrl || (result.referencePath ? await window.hunyuan.readReference(result.referencePath) : null);
+    if (!referenceDataUrl) {
       setError('Para texturizar este GLB necesito la referencia original en esta sesión.');
+      return false;
+    }
+    let missionId;
+    try {
+      const startedMission = await window.superagents.start({
+        mode: 'texture',
+        category: result.category || modelCategory,
+        profile: result.profile || asset.profile,
+        texture: true,
+        textureSize: asset.textureSize,
+        inputReady: true,
+      });
+      missionId = startedMission.id;
+      setMission(startedMission);
+    } catch (missionError) {
+      setError(`Mission Control no pudo iniciar Paint: ${missionError.message}`);
       return false;
     }
     setError(null);
     setGenerating(true);
     setProgress({ percent: 94, label: `Texturizando GLB con Paint ${asset.textureSize || '2K'}`, remaining: null });
-    const imageBase64 = result.inputDataUrl.split(',')[1] || result.inputDataUrl;
+    const imageBase64 = referenceDataUrl.split(',')[1] || referenceDataUrl;
     const tex = await window.hunyuan.textureGlb({
+      missionId,
       glbPath: result.shapeGlbPath || result.glbPath,
       imageBase64,
       textureSize: asset.textureSize === '1K' ? '1K' : '2K',
+      materialProfile: result.materialProfile || asset.materialProfile || 'auto',
+      category: result.category || modelCategory,
     });
     setGenerating(false);
     if (!tex.ok || !tex.textureApplied) {
@@ -831,6 +993,7 @@ export default function App() {
     }
     const updated = {
       ...result,
+      missionId,
       shapeGlbBase64: result.shapeGlbBase64 || result.glbBase64,
       shapeGlbPath: result.shapeGlbPath || result.glbPath,
       glbBase64: tex.glbBase64,
@@ -838,13 +1001,14 @@ export default function App() {
       textured: true,
       textureRequested: true,
       textureSize: tex.textureSize,
+      materialProfile: result.materialProfile || asset.materialProfile || 'auto',
       textureReport: tex.textureReport,
     };
     setResult(updated);
     const { glbBase64, shapeGlbBase64, inputDataUrl, ...light } = updated;
     persistHistory([light, ...history.filter((item) => item.id !== updated.id)].slice(0, MAX_HISTORY));
     return true;
-  }, [asset.textureSize, history, persistHistory, result]);
+  }, [asset.materialProfile, asset.profile, asset.textureSize, history, modelCategory, persistHistory, result]);
 
   const handleCopyPrompt = useCallback(async () => {
     if (result?.prompt) {
@@ -861,7 +1025,11 @@ export default function App() {
       setMode('image3d');
       const glbBase64 =
         entry.glbBase64 || (await window.hunyuan.readGlb(entry.glbPath));
-      setResult({ ...entry, glbBase64 });
+      const shapeGlbBase64 =
+        entry.shapeGlbBase64 || (entry.shapeGlbPath ? await window.hunyuan.readGlb(entry.shapeGlbPath) : null);
+      const inputDataUrl =
+        entry.inputDataUrl || (entry.referencePath ? await window.hunyuan.readReference(entry.referencePath) : null);
+      setResult({ ...entry, glbBase64, shapeGlbBase64, inputDataUrl });
       return;
     }
     setPrompt(entry.prompt);
@@ -872,7 +1040,13 @@ export default function App() {
       const stl = entry.stl || (await window.ollama.readStl(entry.stlPath));
       setResult({ ...entry, stl });
     } else {
-      setParams({ width: entry.width, height: entry.height, steps: entry.steps, seed: entry.seed });
+      setParams((current) => ({
+        ...current,
+        width: entry.width || current.width,
+        height: entry.height || current.height,
+        steps: entry.steps || current.steps,
+        seed: entry.seed ?? current.seed,
+      }));
       setResult(entry);
     }
   }, []);
@@ -942,6 +1116,7 @@ export default function App() {
 
   const handleUseImageAsReference = useCallback(() => {
     if (!result?.image) return;
+    applyRecommendedCategory(result.category || modelCategory, { clearOverrides: false });
     setImage3dInput({
       name: `referencia-${result.id}.png`,
       base64: result.image,
@@ -949,7 +1124,7 @@ export default function App() {
     });
     setMode('image3d');
     setError(null);
-  }, [result]);
+  }, [applyRecommendedCategory, modelCategory, result]);
 
   const handleSelectUseCase = useCallback((id) => {
     const recipe = USE_CASES[id];
@@ -958,7 +1133,13 @@ export default function App() {
     setUseCase(id);
     setModelCategory(recipe.category);
     setMode(recipe.mode);
-    setAsset({ ...profile, profile: recipe.profile, octree: category.octree, scale: recipe.scale });
+    setAsset({
+      ...profile,
+      profile: recipe.profile,
+      materialProfile: MATERIAL_PROFILE_BY_CATEGORY[recipe.category] || 'auto',
+      octree: category.octree,
+      scale: recipe.scale,
+    });
     setSteps3d(category.steps);
     setGuidance3d(category.guidance);
     setBackgroundMode(category.backgroundMode);
@@ -986,7 +1167,7 @@ export default function App() {
         onToolsRefresh={() => checkLocalTools(true)}
       />
 
-      <div className="relative z-10 grid min-h-0 flex-1 grid-cols-[minmax(300px,340px)_minmax(0,1fr)] gap-2 p-2 xl:grid-cols-[380px_minmax(0,1fr)_220px] xl:gap-3 xl:p-3">
+      <div className="relative z-10 grid min-h-0 flex-1 grid-cols-[minmax(300px,340px)_minmax(0,1fr)] gap-2 p-2 xl:grid-cols-[380px_minmax(0,1fr)_300px] xl:gap-3 xl:p-3">
         {/* Left: form */}
         <aside className="min-w-0 overflow-hidden rounded-[20px] border border-sky-200/10 bg-panel/65 shadow-[0_25px_70px_rgba(0,5,20,0.35)] backdrop-blur-xl xl:rounded-[24px]">
           <PromptPanel
@@ -1004,6 +1185,7 @@ export default function App() {
             onSavePersonalPreset={savePersonalPreset}
             onApplyPersonalPreset={applyPersonalPreset}
             executionPlan={executionPlan()}
+            mission={mission}
             deliveryEstimate={deliveryEstimate}
             mode={mode}
             setMode={setMode}
@@ -1077,13 +1259,18 @@ export default function App() {
           />
         </main>
 
-        {/* Right: gallery */}
-        <aside className="hidden min-w-0 overflow-hidden rounded-[24px] border border-sky-200/10 bg-panel/65 shadow-[0_25px_70px_rgba(0,5,20,0.3)] backdrop-blur-xl xl:block">
-          <Gallery
-            history={history}
-            activeId={result?.id}
-            onSelect={handleSelectFromGallery}
-          />
+        {/* Right: local agent mission + artifacts */}
+        <aside className="hidden min-w-0 flex-col overflow-hidden rounded-[24px] border border-sky-200/10 bg-panel/65 shadow-[0_25px_70px_rgba(0,5,20,0.3)] backdrop-blur-xl xl:flex">
+          <div className="flex min-h-0 basis-[54%]">
+            <SuperagentMissionControl mission={mission} skillCount={localSkillCount} />
+          </div>
+          <div className="min-h-0 flex-1 border-t border-sky-200/10">
+            <Gallery
+              history={history}
+              activeId={result?.id}
+              onSelect={handleSelectFromGallery}
+            />
+          </div>
         </aside>
       </div>
     </div>

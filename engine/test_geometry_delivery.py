@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from geometry_delivery import apply_delivery_transform, export_lods, normalize_delivery_options, simplification_policy, simplify_mesh
+from geometry_delivery import apply_delivery_transform, export_lods, lowpoly_fidelity_reasons, lowpoly_refinement_reasons, normalize_delivery_options, point_cloud_fidelity, refinement_policy, refine_lowpoly_mesh, simplification_policy, simplify_mesh
 
 
 class FakeMesh:
@@ -39,6 +39,24 @@ class FakeMesh:
     def export(self, path):
         self.exports.append(path)
         Path(path).write_text("glb")
+
+
+class FakeRefinementMesh(FakeMesh):
+    def __init__(self, faces, area, components=None):
+        super().__init__(faces)
+        self.area = area
+        self._components = components
+        self.merged = False
+        self.cleaned = False
+
+    def merge_vertices(self, **_kwargs):
+        self.merged = True
+
+    def remove_unreferenced_vertices(self):
+        self.cleaned = True
+
+    def split(self, **_kwargs):
+        return self._components if self._components is not None else [self]
 
 
 class GeometryDeliveryTest(unittest.TestCase):
@@ -95,8 +113,65 @@ class GeometryDeliveryTest(unittest.TestCase):
         self.assertEqual(len(mesh.faces), 12000)
         self.assertEqual(
             mesh.decimation_calls[-1],
-            {"face_count": 12000, "aggression": 8, "preserve_boundary": True},
+            {"face_count": 12000, "aggression": 4, "preserve_boundary": True},
         )
+
+    def test_lowpoly_refinement_rounds_custom_assets_but_not_technical_edges(self):
+        rounded = refinement_policy("custom", "lowpoly")
+        technical = refinement_policy("industrial", "lowpoly")
+        self.assertEqual(rounded["smoothing_iterations"], 3)
+        self.assertFalse(rounded["preserve_hard_edges"])
+        self.assertEqual(technical["smoothing_iterations"], 0)
+        self.assertTrue(technical["preserve_hard_edges"])
+
+    def test_lowpoly_refinement_removes_decimation_fragments_and_smooths_survivor(self):
+        main = FakeRefinementMesh(900, 100.0)
+        fragment = FakeRefinementMesh(12, 0.1)
+        source = FakeRefinementMesh(912, 100.1, [main, fragment])
+        smoothing_calls = []
+        refined, report = refine_lowpoly_mesh(
+            source,
+            "custom",
+            smoother=lambda mesh, **kwargs: smoothing_calls.append((mesh, kwargs)),
+        )
+        self.assertIs(refined, main)
+        self.assertEqual(report["removed_components"], 1)
+        self.assertEqual(report["output_components"], 1)
+        self.assertEqual(report["smoothing_iterations"], 3)
+        self.assertEqual(smoothing_calls[0][1]["iterations"], 3)
+
+    def test_lowpoly_refinement_gate_rejects_fragments_degenerates_and_spikes(self):
+        reasons = lowpoly_refinement_reasons({
+            "output_components": 2,
+            "degenerate_faces": 1,
+            "edge_max_p95": 4.1,
+        })
+        self.assertEqual(reasons, ["fragmentos_desconectados", "triangulos_degenerados", "puntas_geometricas"])
+
+    def test_point_cloud_fidelity_reports_surface_and_normal_error(self):
+        report = point_cloud_fidelity(
+            [[0, 0, 0], [1, 0, 0]],
+            [[0, 0, 0.1], [1, 0, 0.1]],
+            [[0, 0, 1], [0, 0, 1]],
+            [[0, 0, -1], [0, 0, -1]],
+            diagonal=1.0,
+        )
+        self.assertAlmostEqual(report["sampled_hausdorff_ratio"], 0.1)
+        self.assertAlmostEqual(report["surface_distance_p95_ratio"], 0.1)
+        self.assertAlmostEqual(report["normal_error_p95_degrees"], 180.0)
+
+    def test_lowpoly_fidelity_gate_rejects_shape_and_normal_drift(self):
+        reasons = lowpoly_fidelity_reasons({
+            "sampled_hausdorff_ratio": 0.041,
+            "surface_distance_p95_ratio": 0.021,
+            "normal_error_p95_degrees": 51.0,
+            "thresholds": {
+                "sampled_hausdorff_ratio": 0.04,
+                "surface_distance_p95_ratio": 0.02,
+                "normal_error_p95_degrees": 50.0,
+            },
+        })
+        self.assertEqual(reasons, ["silueta_deformada", "superficie_irregular", "normales_inconsistentes"])
 
     def test_export_lods_records_category_simplification_policy(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -108,7 +183,8 @@ class GeometryDeliveryTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             outputs = export_lods(FakeMesh(100000), Path(tmp), "job", 12000, category="industrial", profile="lowpoly")
             self.assertEqual(outputs["LOD1"]["simplification"]["category"], "lowpoly")
-            self.assertEqual(outputs["LOD1"]["simplification"]["aggression"], 8)
+            self.assertEqual(outputs["LOD1"]["simplification"]["aggression"], 4)
+            self.assertEqual(outputs["LOD1"]["refinement"]["output_components"], 1)
 
 
 if __name__ == "__main__":

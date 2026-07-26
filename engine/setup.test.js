@@ -31,7 +31,28 @@ test('preflight finds a supported user-local Python with Finder PATH', () => {
 test('packaged app includes Hunyuan Paint runtime files', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(appDir, 'package.json'), 'utf8'));
   const paintRuntime = 'engine/Hunyuan3D-2.1-mlx/hy3dpaint/**/*';
+  const generationPolicy = 'engine/generation_policy.py';
+  const materialPolicy = 'engine/material_policy.py';
+  const textureQuality = 'engine/texture_quality.py';
 
   assert.ok(pkg.build.files.includes(paintRuntime));
   assert.ok(pkg.build.asarUnpack.includes(paintRuntime));
+  assert.ok(pkg.build.files.includes(generationPolicy));
+  assert.ok(pkg.build.asarUnpack.includes(generationPolicy));
+  assert.ok(pkg.build.files.includes(materialPolicy));
+  assert.ok(pkg.build.asarUnpack.includes(materialPolicy));
+  assert.ok(pkg.build.files.includes(textureQuality));
+  assert.ok(pkg.build.asarUnpack.includes(textureQuality));
+});
+
+test('engine updater copies every local server module', () => {
+  const main = fs.readFileSync(path.join(appDir, 'electron', 'main.js'), 'utf8');
+  assert.match(main, /'generation_policy\.py'/);
+  assert.match(main, /'material_policy\.py'/);
+  assert.match(main, /'texture_quality\.py'/);
+});
+
+test('renderer CSP permits blob URLs used by GLTFLoader embedded textures', () => {
+  const html = fs.readFileSync(path.join(appDir, 'index.html'), 'utf8');
+  assert.match(html, /img-src[^;]*blob:/);
 });

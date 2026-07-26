@@ -97,6 +97,18 @@ function TexturePbrControl({ asset, setAsset, disabled }) {
     ['1K', 'PBR rapido'],
     ['2K', 'PBR final'],
   ];
+  const materialOptions = [
+    ['auto', 'Auto desde imagen'],
+    ['person', 'Persona / piel'],
+    ['animal', 'Animal / pelaje'],
+    ['wood', 'Madera'],
+    ['iron', 'Fierro'],
+    ['metal', 'Metal'],
+    ['matte_paint', 'Pintura opaca'],
+    ['rust', 'Óxido'],
+    ['organic_grass', 'Pasto orgánico'],
+    ['synthetic_grass', 'Pasto sintético'],
+  ];
   return (
     <Section eyebrow="Material" title="Texturizado PBR">
       <div className="grid grid-cols-3 gap-1.5 rounded-xl border border-white/5 bg-black/15 p-1.5">
@@ -122,6 +134,17 @@ function TexturePbrControl({ asset, setAsset, disabled }) {
           <span className="font-mono text-[8px] uppercase tracking-wider text-cyan-200">{asset.texture ? `${asset.textureSize} activo` : 'gris'}</span>
         </div>
       </div>
+      <label className="mt-2 block text-[9px] uppercase tracking-wider text-slate-500">
+        Supuesto físico
+        <select
+          value={asset.materialProfile || 'auto'}
+          disabled={disabled || !asset.texture}
+          onChange={(event) => setAsset((current) => ({ ...current, materialProfile: event.target.value }))}
+          className="field-modern mt-1.5 !py-2"
+        >
+          {materialOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select>
+      </label>
     </Section>
   );
 }
@@ -142,7 +165,7 @@ function LowPolyControl({ asset, categoryId, categoryDefaults, setAsset, setStep
       <div>
         <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-lime-300/80">Skill de entrega</p>
         <p className="mt-1 text-sm font-semibold">Low Poly</p>
-        <p className="mt-0.5 text-[10px] text-slate-500">12K caras · octree 128 · decimation agresiva controlada</p>
+        <p className="mt-0.5 text-[10px] text-slate-500">Fuente 192/35 · salida 12K · limpieza de fragmentos · PBR 2K opcional</p>
       </div>
       <input
         type="checkbox"
@@ -196,6 +219,24 @@ function PipelinePlan({ steps }) {
   );
 }
 
+function CompactMissionControl({ mission }) {
+  const tasks = mission?.tasks || [];
+  const current = tasks.find((task) => task.status === 'running')
+    || tasks.find((task) => task.status === 'ready');
+  const done = tasks.filter((task) => task.status === 'done').length;
+  return (
+    <div role="status" aria-live="polite" className="rounded-2xl border border-emerald-300/15 bg-emerald-300/[0.045] px-3 py-2.5 xl:hidden">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-mono text-[8px] uppercase tracking-[0.18em] text-emerald-200">Superagentes · offline</span>
+        <span className="font-mono text-[8px] text-slate-400">{done}/{tasks.length} skills</span>
+      </div>
+      <p className="mt-1 truncate text-[10px] font-semibold text-slate-200">
+        {current?.agent || (mission?.status === 'done' ? 'Misión validada' : 'Preparando misión local')}
+      </p>
+    </div>
+  );
+}
+
 function CategorySelector({ value, onChange, disabled }) {
   const selected = MODEL_CATEGORIES[value];
   return (
@@ -221,7 +262,7 @@ function CategorySelector({ value, onChange, disabled }) {
 export default function PromptPanel(props) {
   const {
     connected, useCase, onSelectUseCase, modelCategory, onSelectModelCategory, mode, setMode, imageModel, imageModels, setImageModel,
-    configMode, setConfigMode, manualOverrides, onResetRecommendations, onResetRecommendationSection, personalPresets, onSavePersonalPreset, onApplyPersonalPreset, executionPlan, deliveryEstimate,
+    configMode, setConfigMode, manualOverrides, onResetRecommendations, onResetRecommendationSection, personalPresets, onSavePersonalPreset, onApplyPersonalPreset, executionPlan, mission, deliveryEstimate,
     imageModelAvailable, installingModel, onInstallImageModel, stlModels, stlModel, setStlModel, prompt, setPrompt,
     params, setParams, image3dInput, onPickImage, onDropImage, steps3d, setSteps3d, guidance3d, setGuidance3d,
     backgroundMode, setBackgroundMode, subjectPadding, setSubjectPadding, pivot, setPivot, pivotCustom, setPivotCustom, upAxis, setUpAxis, units, setUnits, asset,
@@ -250,7 +291,7 @@ export default function PromptPanel(props) {
   const hunyuanDegraded = Boolean(hunyuanHealth?.degraded);
   const hunyuanStatus = hunyuanDegraded ? 'Degradado' : hunyuanUp ? 'Disponible' : hunyuanHealth?.error ? 'Error' : 'Preparando';
   const hunyuanDetail = hunyuanHealth?.error
-    ? 'Error de carga'
+    ? String(hunyuanHealth.error).trim().split('\n').at(-1).slice(0, 120)
     : queueActive
       ? `${queuePending ? 'Activo + pendiente' : 'Job activo'}`
       : hunyuanHealth?.model_loaded
@@ -295,7 +336,7 @@ export default function PromptPanel(props) {
           </div>
         </div>
       )}
-      {(mode === 'image3d' || mode === 'stl') && (
+      {(mode === 'stl' || ((mode === 'image3d') && !['animal', 'person'].includes(modelCategory))) && (
         <LowPolyControl
           asset={asset}
           categoryId={modelCategory}
@@ -309,6 +350,7 @@ export default function PromptPanel(props) {
         <TexturePbrControl asset={asset} setAsset={setAsset} disabled={processing} />
       )}
       <PipelinePlan steps={executionPlan || []} />
+      <CompactMissionControl mission={mission} />
 
       <Section eyebrow="Fuente" title={mode === 'image3d' ? 'Motor de reconstrucción' : mode === 'image' ? 'Modelo generativo' : 'Pipeline de modelado'}>
         {mode === 'image' && (
@@ -443,7 +485,7 @@ export default function PromptPanel(props) {
         )}
       </Section>
 
-      {mode === 'image3d' && <CategorySelector value={modelCategory} onChange={onSelectModelCategory} disabled={processing} />}
+      <CategorySelector value={modelCategory} onChange={onSelectModelCategory} disabled={processing} />
 
       {mode === 'image3d' && (
         <Section
@@ -544,6 +586,51 @@ export default function PromptPanel(props) {
                 <Slider label="Ancho" value={params.width} min={512} max={2048} step={64} suffix=" px" onChange={(value) => update('width', value)} />
                 <Slider label="Alto" value={params.height} min={512} max={2048} step={64} suffix=" px" onChange={(value) => update('height', value)} />
                 <Slider label="Pasos" value={params.steps} min={1} max={20} step={1} onChange={(value) => update('steps', value)} />
+              </>
+            )}
+            {mode !== 'image3d' && (
+              <>
+                <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-slate-500">Dirección fotográfica</span>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <label className="text-[9px] uppercase tracking-wider text-slate-500">
+                    Iluminación
+                    <select value={params.lighting || 'studio'} onChange={(event) => update('lighting', event.target.value)} className="field-modern mt-1.5 !py-2">
+                      <option value="studio">Estudio suave</option>
+                      <option value="natural">Luz natural</option>
+                      <option value="overcast">Día nublado</option>
+                      <option value="dramatic">Dramática realista</option>
+                    </select>
+                  </label>
+                  <label className="text-[9px] uppercase tracking-wider text-slate-500">
+                    Cámara
+                    <select value={params.view || 'threeQuarter'} onChange={(event) => update('view', event.target.value)} className="field-modern mt-1.5 !py-2">
+                      <option value="threeQuarter">Tres cuartos</option>
+                      <option value="front">Frontal</option>
+                      <option value="side">Lateral</option>
+                      <option value="orthographic">Ortográfica</option>
+                    </select>
+                  </label>
+                  <label className="text-[9px] uppercase tracking-wider text-slate-500">
+                    Fondo
+                    <select value={params.background || 'plain'} onChange={(event) => update('background', event.target.value)} className="field-modern mt-1.5 !py-2">
+                      <option value="plain">Neutro limpio</option>
+                      <option value="white">Blanco estudio</option>
+                      <option value="transparent">Aislamiento uniforme</option>
+                      <option value="contextual">Contexto real</option>
+                    </select>
+                  </label>
+                </div>
+                <label className="block text-[11px] text-slate-400">
+                  Instrucciones personalizadas
+                  <textarea
+                    value={params.customInstructions || ''}
+                    onChange={(event) => update('customInstructions', event.target.value)}
+                    rows={3}
+                    maxLength={500}
+                    placeholder="Material, desgaste, color, lente o detalle real específico…"
+                    className="field-modern scroll-dark mt-2 resize-none leading-relaxed"
+                  />
+                </label>
               </>
             )}
             {mode === 'image3d' && (

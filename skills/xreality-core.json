@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "pack": {
+    "id": "xreality-core",
+    "label": "Xreality Core",
+    "version": "1.0.0",
+    "offline": true
+  },
+  "skills": [
+    {
+      "id": "reference.generate",
+      "label": "Reference Director",
+      "agent": "Director de referencia",
+      "executor": "ollama.generate",
+      "resource": "gpu",
+      "description": "Construye una referencia fotográfica local y reproducible."
+    },
+    {
+      "id": "reference.guard",
+      "label": "Input Sentinel",
+      "agent": "Centinela visual",
+      "executor": "hunyuan.prepare",
+      "resource": "cpu",
+      "description": "Valida, aísla y encuadra la referencia antes de reconstruir."
+    },
+    {
+      "id": "geometry.reconstruct",
+      "label": "Shape Architect",
+      "agent": "Arquitecto de geometría",
+      "executor": "hunyuan.shape",
+      "resource": "gpu",
+      "description": "Reconstruye el volumen con Hunyuan3D sobre Apple MLX."
+    },
+    {
+      "id": "geometry.audit",
+      "label": "Geometry Critic",
+      "agent": "Crítico geométrico",
+      "executor": "engine.geometry_gate",
+      "resource": "cpu",
+      "description": "Limpia la malla y aplica gates de topología, calidad y presupuesto."
+    },
+    {
+      "id": "delivery.canonicalize",
+      "label": "XR Delivery",
+      "agent": "Curador XR",
+      "executor": "engine.delivery",
+      "resource": "cpu",
+      "description": "Aplica escala, pivot, orientación, LOD y empaquetado GLB."
+    },
+    {
+      "id": "material.paint",
+      "label": "PBR Materialist",
+      "agent": "Materialista PBR",
+      "executor": "hunyuan.paint",
+      "resource": "gpu",
+      "description": "Sintetiza y valida mapas PBR embebidos usando MLX local."
+    },
+    {
+      "id": "quality.pbr_gate",
+      "label": "PBR Inspector",
+      "agent": "Inspector de materiales",
+      "executor": "engine.pbr_gate",
+      "resource": "cpu",
+      "description": "Comprueba que los mapas PBR estén realmente embebidos en el GLB."
+    },
+    {
+      "id": "quality.image_gate",
+      "label": "Image Output Gate",
+      "agent": "Crítico de referencia",
+      "executor": "engine.image_gate",
+      "resource": "cpu",
+      "description": "Rechaza respuestas vacías y conserva parámetros y lineage."
+    },
+    {
+      "id": "delivery.manifest",
+      "label": "Evidence Card",
+      "agent": "Auditor de evidencia",
+      "executor": "engine.report",
+      "resource": "cpu",
+      "description": "Cierra el activo con reporte técnico, estados y trazabilidad local."
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useState, useEffect } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useCallback } from 'react';
 import { USE_CASES } from '../lib/useCases.js';
 import { XR_PROFILES, profileAudit } from '../lib/xrProfiles.js';
 import { getAuditSemaphore } from '../lib/uiStatus.js';
@@ -48,6 +48,7 @@ function VisualAudit({ audit, result, asset }) {
   const budget = result?.targetFaces || asset?.targetFaces;
   const faces = result?.faces || result?.triangles;
   const withinBudget = budget && faces ? faces <= budget : null;
+  const refinement = result?.lowpolyRefinement;
   return (
     <div className={`mb-3 rounded-xl border px-3 py-2 ${panelClass}`}>
       <div className="flex items-center justify-between gap-3">
@@ -65,9 +66,148 @@ function VisualAudit({ audit, result, asset }) {
         <span className="rounded-lg border border-white/5 bg-black/15 px-2 py-1">Caras: {faces || '—'}</span>
         <span className="rounded-lg border border-white/5 bg-black/15 px-2 py-1">{withinBudget == null ? 'Presupuesto: —' : withinBudget ? 'Presupuesto: OK' : 'Presupuesto: revisar'}</span>
       </div>
+      {refinement && (
+        <div className="mt-2 grid grid-cols-3 gap-1.5 text-[9px]">
+          <span className="rounded-lg border border-white/5 bg-black/15 px-2 py-1">Fragmentos: {refinement.output_components === 1 ? '0 · OK' : refinement.output_components}</span>
+          <span className="rounded-lg border border-white/5 bg-black/15 px-2 py-1">Degenerados: {refinement.degenerate_faces || 0}</span>
+          <span className="rounded-lg border border-white/5 bg-black/15 px-2 py-1">Puntas: {(refinement.edge_max_p95 || 0) <= 4 ? 'OK' : 'Revisar'}</span>
+          {refinement.fidelity && <span className="rounded-lg border border-white/5 bg-black/15 px-2 py-1">Forma Δ: {(refinement.fidelity.sampled_hausdorff_ratio * 100).toFixed(2)}%</span>}
+          {refinement.fidelity?.normal_error_p95_degrees != null && <span className="rounded-lg border border-white/5 bg-black/15 px-2 py-1">Normales p95: {refinement.fidelity.normal_error_p95_degrees.toFixed(1)}°</span>}
+        </div>
+      )}
       {result?.textureRequested && !result?.textured && (
         <div className="mt-2 rounded-lg border border-rose-300/20 bg-rose-300/10 px-2 py-1.5 text-[9px] font-semibold text-rose-100">
           Este preview NO tiene textura PBR embebida. Es un GLB shape-only, por eso se ve gris.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TexturePreview({ result, inspection }) {
+  const report = result?.textureReport;
+  const reportPassed = report?.passed === true;
+  const reportFailed = report?.passed === false || (Array.isArray(report?.reasons) && report.reasons.length > 0);
+  const textureSlots = inspection?.textureSlots || [];
+  const hasLoadedTextures = (inspection?.textureCount || 0) > 0;
+  const inspectionMissingTextures = inspection && result?.textured && reportPassed && !hasLoadedTextures;
+  const alignmentRejected = report?.reference_alignment?.passed === false
+    && report?.reference_alignment?.reason !== 'reference_anchor_disabled';
+  const status = hasLoadedTextures && reportPassed && report?.reference_anchored
+    ? 'PBR IA anclado a la imagen · revisar'
+    : hasLoadedTextures && reportPassed && alignmentRejected
+    ? 'PBR IA sin anclaje: silueta incompatible · revisar'
+    : hasLoadedTextures && reportPassed
+    ? 'PBR embebido visible en visor'
+    : hasLoadedTextures && reportFailed
+    ? 'Textura visible, pero GLB no autocontenido'
+    : inspectionMissingTextures
+    ? 'PBR validado; mapas no visibles'
+    : result?.textured && reportPassed
+    ? 'PBR validado; cargando mapas'
+    : reportFailed
+    ? 'PBR no validado'
+    : result?.textureRequested
+    ? 'Textura solicitada'
+    : 'Shape-only';
+  const panelClass = hasLoadedTextures || reportPassed
+    ? inspectionMissingTextures
+      ? 'border-amber-300/20 bg-amber-300/5 text-amber-100'
+      : 'border-cyan-300/20 bg-cyan-300/5 text-cyan-100'
+    : reportFailed
+    ? 'border-rose-300/20 bg-rose-300/5 text-rose-100'
+    : 'border-white/5 bg-black/15 text-slate-300';
+
+  return (
+    <div className={`mb-3 rounded-xl border px-3 py-2 ${panelClass}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="font-mono text-[8px] uppercase tracking-[0.16em] opacity-70">Preview textura</p>
+          <p className="mt-0.5 text-[10px] font-medium">{status}</p>
+        </div>
+        <span className="font-mono text-[8px] uppercase tracking-wider">
+          {inspection ? `${inspection.texturedMaterialCount}/${inspection.materialCount} materiales` : 'Inspeccionando'}
+        </span>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5 font-mono text-[8px] uppercase tracking-wider">
+        <span className="rounded-md border border-white/5 bg-black/15 px-2 py-1">
+          Mapas {inspection?.textureCount ?? report?.textures ?? 0}
+        </span>
+        <span className="rounded-md border border-white/5 bg-black/15 px-2 py-1">
+          Embebidas {report?.embedded_images ?? '—'}/{report?.images ?? '—'}
+        </span>
+        {report?.material_profile && (
+          <span className="rounded-md border border-white/5 bg-black/15 px-2 py-1">
+            Material {report.material_profile}
+          </span>
+        )}
+        {report?.reference_alignment?.silhouette_iou != null && (
+          <span className="rounded-md border border-white/5 bg-black/15 px-2 py-1">
+            Coincidencia silueta {(report.reference_alignment.silhouette_iou * 100).toFixed(0)}%
+          </span>
+        )}
+        {(textureSlots.length ? textureSlots : ['Sin slots visibles']).slice(0, 4).map((slot) => (
+          <span key={slot} className="rounded-md border border-white/5 bg-black/15 px-2 py-1">{slot}</span>
+        ))}
+      </div>
+      {reportFailed && (
+        <p className="mt-2 text-[9px] leading-relaxed opacity-80">
+          {Array.isArray(report.reasons) ? report.reasons.join(', ') : 'El gate PBR fallo.'}
+        </p>
+      )}
+      {alignmentRejected && (
+        <p className="mt-2 text-[9px] leading-relaxed text-amber-100/80">
+          La foto no se proyectó directamente porque deformaría la textura; revisa el borrador IA antes de usarlo.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function CanonicalEvidence({ renderSet }) {
+  const views = renderSet?.views || [];
+  const warnings = renderSet?.warnings || [];
+  const metrics = renderSet?.performance;
+  const encodedMegabytes = metrics ? (metrics.encodedBytes / 1024 / 1024).toFixed(1) : null;
+  return (
+    <div className="mb-3 rounded-xl border border-violet-300/15 bg-violet-300/[0.035] px-3 py-2">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="font-mono text-[8px] uppercase tracking-[0.16em] text-violet-200/70">TruthLoop · 8 vistas canónicas</p>
+          <p className="mt-0.5 text-[10px] text-slate-300">
+            {warnings.length
+              ? `Captura incompleta: ${warnings.join(', ')}`
+              : views.length === 8
+              ? 'Evidencia local 1024² lista para comparar y medir.'
+              : 'Renderizando evidencia local…'}
+          </p>
+          {metrics && (
+            <p className="mt-1 font-mono text-[7px] uppercase tracking-wider text-violet-200/55">
+              {metrics.captureDurationMs} ms · {encodedMegabytes} MB · memoria binaria única
+            </p>
+          )}
+        </div>
+        <span className="font-mono text-[8px] uppercase tracking-wider text-violet-200/70">
+          {views.length}/8
+        </span>
+      </div>
+      {views.length > 0 && (
+        <div className="mt-2 grid grid-cols-4 gap-1.5 sm:grid-cols-8">
+          {views.map((view) => (
+            <figure key={view.viewId} className="overflow-hidden rounded-md border border-white/5 bg-black/20">
+              <img
+                src={view.imageUrl || view.dataUrl}
+                alt={`Vista ${view.azimuthDegrees} grados`}
+                width={view.width}
+                height={view.height}
+                decoding="async"
+                className="aspect-square w-full object-cover"
+              />
+              <figcaption className="truncate px-1 py-0.5 text-center font-mono text-[7px] text-slate-400">
+                {view.azimuthDegrees}° · {view.imageSha256.slice(0, 6)}
+              </figcaption>
+            </figure>
+          ))}
         </div>
       )}
     </div>
@@ -112,24 +252,38 @@ export default function ImageViewer({
     : isStl
     ? 'Guardar STL'
     : 'Guardar imagen';
-  const exportBlocked = result?.qualityLevel === 'critico' || missingRequestedTexture;
-
   const [saveLabel, setSaveLabel] = useState(defaultSaveLabel);
   const [copyLabel, setCopyLabel] = useState('Copiar prompt');
   const [stlLabel, setStlLabel] = useState('Exportar STL');
   const [textureLabel, setTextureLabel] = useState('Texturizar ahora');
   const [showCode, setShowCode] = useState(false);
+  const [texturePreview, setTexturePreview] = useState(null);
+  const [canonicalRenders, setCanonicalRenders] = useState(null);
+  const [textureApproved, setTextureApproved] = useState(false);
+  const textureNeedsReview = result?.textured && result?.textureRequested && !textureApproved;
+  const geometryBlocked = result?.qualityLevel === 'critico';
+  const exportBlocked = geometryBlocked || missingRequestedTexture || textureNeedsReview;
 
   useEffect(() => {
     setSaveLabel(result?.filePath ? '✓ Guardado' : defaultSaveLabel);
     setCopyLabel('Copiar prompt');
     setStlLabel('Exportar STL');
-    setTextureLabel('Texturizar ahora');
+    setTextureLabel(result?.textured ? 'Repintar desde imagen' : 'Texturizar ahora');
     setShowCode(false);
-  }, [result?.id, result?.filePath, defaultSaveLabel]);
+    setTexturePreview(null);
+    setCanonicalRenders(null);
+    setTextureApproved(false);
+  }, [result?.id, result?.filePath, result?.glbBase64, defaultSaveLabel]);
+
+  const handleGltfInspection = useCallback((inspection) => {
+    setTexturePreview(inspection);
+  }, []);
+  const handleCanonicalRenders = useCallback((renderSet) => {
+    setCanonicalRenders(renderSet);
+  }, []);
 
   const handleSaveStl = async () => {
-    if (exportBlocked) {
+    if (geometryBlocked) {
       setStlLabel('Bloqueado');
       return;
     }
@@ -141,7 +295,7 @@ export default function ImageViewer({
   const handleTexture = async () => {
     setTextureLabel('Texturizando...');
     const ok = await onTextureGlb?.();
-    setTextureLabel(ok ? 'PBR aplicado' : 'Texturizar ahora');
+    setTextureLabel(ok ? 'Borrador IA listo' : result?.textured ? 'Repintar desde imagen' : 'Texturizar ahora');
   };
 
   const handleSave = async () => {
@@ -252,16 +406,16 @@ export default function ImageViewer({
                 </Suspense>
               </div>
               <div className="relative min-h-0 overflow-hidden rounded-xl border border-cyan-300/30 shadow-2xl">
-                <div className="absolute z-10 m-2 rounded-md border border-cyan-300/20 bg-cyan-950/70 px-2 py-1 font-mono text-[8px] uppercase tracking-wider text-cyan-100">PBR aplicado</div>
+                <div className="absolute z-10 m-2 rounded-md border border-cyan-300/20 bg-cyan-950/70 px-2 py-1 font-mono text-[8px] uppercase tracking-wider text-cyan-100">PBR IA · revisar</div>
                 <Suspense fallback={<ViewerFallback />}>
-                  <GltfViewer glbBase64={result.glbBase64} />
+                  <GltfViewer glbBase64={result.glbBase64} onInspection={handleGltfInspection} onCanonicalRenders={handleCanonicalRenders} />
                 </Suspense>
               </div>
             </div>
           ) : isGlb ? (
             <div className="h-full w-full overflow-hidden rounded-xl border border-border shadow-2xl">
               <Suspense fallback={<ViewerFallback />}>
-                <GltfViewer glbBase64={result.glbBase64} />
+                <GltfViewer glbBase64={result.glbBase64} onInspection={handleGltfInspection} onCanonicalRenders={handleCanonicalRenders} />
               </Suspense>
             </div>
           ) : isStl ? (
@@ -287,6 +441,8 @@ export default function ImageViewer({
           {(isGlb || isStl) && (
             <VisualAudit audit={audit} result={result} asset={asset} />
           )}
+          {isGlb && <TexturePreview result={result} inspection={texturePreview} />}
+          {isGlb && <CanonicalEvidence renderSet={canonicalRenders} />}
           <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
             <Meta label="Modelo" value={result.model} />
             {isGlb ? (
@@ -352,7 +508,7 @@ export default function ImageViewer({
               </button>
             )}
             {isGlb && (
-              !result.textured && result.inputDataUrl && (
+              result.inputDataUrl && (
                 <button
                   onClick={handleTexture}
                   disabled={processing}
@@ -363,14 +519,22 @@ export default function ImageViewer({
                 </button>
               )
             )}
+            {isGlb && textureNeedsReview && (
+              <button
+                onClick={() => setTextureApproved(true)}
+                className="rounded-lg border border-emerald-300/25 bg-emerald-300/5 px-3 py-1.5 text-xs font-medium text-emerald-100 transition hover:bg-emerald-300/10"
+              >
+                Usar esta textura
+              </button>
+            )}
             {isGlb && (
               <button
                 onClick={handleSaveStl}
-                disabled={exportBlocked}
+                disabled={geometryBlocked}
                 title="Exportar como STL para impresión 3D (escala aproximada de 60 mm)"
                 className="rounded-lg border border-border bg-elevated px-3 py-1.5 text-xs font-medium text-neutral-200 transition hover:border-neutral-600 disabled:cursor-not-allowed disabled:opacity-45"
               >
-                {exportBlocked ? 'Bloqueado por calidad' : stlLabel}
+                {geometryBlocked ? 'Bloqueado por calidad' : stlLabel}
               </button>
             )}
             {!isGlb && (

@@ -18,7 +18,8 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from PIL import Image
-from geometry_delivery import apply_delivery_transform, export_lods, normalize_delivery_options, simplification_policy, simplify_mesh
+from geometry_delivery import apply_delivery_transform, export_lods, lowpoly_refinement_reasons, measure_lowpoly_fidelity, normalize_delivery_options, refine_lowpoly_mesh, simplification_policy, simplify_mesh
+from generation_policy import normalize_generation_request
 from job_logging import append_job_log
 from job_queue import HeavyJobQueue, QueueFull
 from pipeline_states import pipeline_state
@@ -59,6 +60,7 @@ class GenerateRequest(BaseModel):
     scale_meters: float = Field(default=1.0, gt=0, le=1000)
     profile: str = "xreal"
     category: str = "custom"
+    material_profile: str = "auto"
     guidance: float = Field(default=6.0, ge=1.0, le=12.0)
     background_mode: str = "auto"
     subject_padding: float = Field(default=0.16, ge=0.02, le=0.4)
@@ -77,6 +79,8 @@ class TextureRequest(BaseModel):
     glb_path: str
     image_base64: str = Field(min_length=32)
     texture_size: str = Field(default="2K", pattern="^(1K|2K)$")
+    category: str = "custom"
+    material_profile: str = "auto"
 
 
 class AnalyzeRequest(BaseModel):
@@ -527,6 +531,7 @@ def set_job_state(job_id: str, state_id: str, **extra):
 
 def run_job(job_id: str, request: GenerateRequest):
     global shape_pipeline
+    request = normalize_generation_request(request)
     job = jobs[job_id]
     started = time.monotonic()
     pipeline = None
@@ -585,17 +590,34 @@ def run_job(job_id: str, request: GenerateRequest):
                 "Usa una imagen de cuerpo/objeto completo, sin elementos delante y con fondo simple."
             )
 
-        quality = compute_quality(mesh, request.category, request, faces_before, raw_faces)
-        if quality["level"] == "critico":
+        source_quality = compute_quality(mesh, request.category, request, faces_before, raw_faces)
+        if source_quality["level"] == "critico":
             raise RuntimeError(
                 "Resultado rechazado por control de calidad: "
-                + "; ".join(quality["reasons"] or ["la malla no alcanzó el nivel mínimo."])
+                + "; ".join(source_quality["reasons"] or ["la malla no alcanzó el nivel mínimo."])
             )
         set_job_state(job_id, "quality_checked")
 
         simplification = simplification_policy(request.category, request.target_faces, faces_before, request.profile)
+        fidelity_source = mesh.copy() if request.profile == "lowpoly" else None
         mesh = simplify_mesh(mesh, request.target_faces, request.category, request.profile)
+        lowpoly_refinement = None
+        if request.profile == "lowpoly":
+            mesh, lowpoly_refinement = refine_lowpoly_mesh(mesh, request.category)
+            lowpoly_refinement["fidelity"] = measure_lowpoly_fidelity(fidelity_source, mesh, request.category)
+            refinement_failures = lowpoly_refinement_reasons(lowpoly_refinement)
+            if refinement_failures:
+                raise RuntimeError(
+                    "Low Poly rechazado por acabado visual: " + ", ".join(refinement_failures)
+                )
         set_job_state(job_id, "mesh_simplified")
+        delivered_faces = len(getattr(mesh, "faces", []))
+        quality = compute_quality(mesh, request.category, request, delivered_faces, delivered_faces)
+        if quality["level"] == "critico":
+            raise RuntimeError(
+                "Low Poly rechazado tras optimización: "
+                + "; ".join(quality["reasons"] or ["la malla final no alcanzó el nivel mínimo."])
+            )
         delivery = normalize_delivery_options(request.pivot, request.up_axis, request.units, request.pivot_custom)
         apply_delivery_transform(mesh, scale_meters=request.scale_meters, **delivery)
         set_job_state(job_id, "delivery_ready")
@@ -622,6 +644,8 @@ def run_job(job_id: str, request: GenerateRequest):
                 image_path=prepared_path,
                 output_glb_path=output,
                 texture_size=request.texture_size,
+                material_profile=request.material_profile,
+                category=request.category,
             )
             set_job_state(job_id, "texture_validated")
 
@@ -655,6 +679,8 @@ def run_job(job_id: str, request: GenerateRequest):
                 "faces": faces,
                 "vertices": len(getattr(mesh, "vertices", [])),
                 "simplification": simplification,
+                "lowpoly_refinement": lowpoly_refinement,
+                "source_quality": source_quality,
                 **quality,
             },
             "lods": lods,
@@ -693,6 +719,7 @@ def run_job(job_id: str, request: GenerateRequest):
                 "quality_score": quality["score"],
                 "quality_level": quality["level"],
                 "quality_text": " ".join(quality["reasons"]) if quality["reasons"] else "Validado correctamente.",
+                "lowpoly_refinement": lowpoly_refinement,
             }
         )
         append_job_log(
@@ -862,6 +889,8 @@ def texture_glb(request: TextureRequest):
           image_path=reference_path,
           output_glb_path=output,
           texture_size=request.texture_size,
+          material_profile=request.material_profile,
+          category=request.category,
       )
       return {
           "ok": True,

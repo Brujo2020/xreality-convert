@@ -11,10 +11,6 @@ contextBridge.exposeInMainWorld('ollama', {
   // -> { ok: true, image: base64, duration: number } | { ok: false, error, cancelled? }
   generate: (params) => ipcRenderer.invoke('ollama:generate', params),
 
-  // params: { model, prompt, seed }
-  // -> { ok: true, stl, code, duration, triangles, stlPath } | { ok: false, error, code?, cancelled? }
-  generateStl: (params) => ipcRenderer.invoke('ollama:generateStl', params),
-
   // Read a cached/saved STL file back (for gallery re-display).
   readStl: (filePath) => ipcRenderer.invoke('ollama:readStl', filePath),
 
@@ -44,6 +40,18 @@ contextBridge.exposeInMainWorld('localTools', {
   list: (options = {}) => ipcRenderer.invoke('tools:list', { force: options.force === true }),
 });
 
+contextBridge.exposeInMainWorld('superagents', {
+  listSkills: () => ipcRenderer.invoke('superagents:listSkills'),
+  preview: (input) => ipcRenderer.invoke('superagents:preview', input),
+  start: (input) => ipcRenderer.invoke('superagents:start', input),
+  active: () => ipcRenderer.invoke('superagents:active'),
+  onMission: (callback) => {
+    const listener = (_event, mission) => callback(mission);
+    ipcRenderer.on('superagents:mission', listener);
+    return () => ipcRenderer.removeListener('superagents:mission', listener);
+  },
+});
+
 // Hunyuan3D image->3D mesh, served by the local Python (MLX) FastAPI server.
 contextBridge.exposeInMainWorld('hunyuan', {
   // -> { up: boolean, model_loaded?: boolean }
@@ -59,6 +67,7 @@ contextBridge.exposeInMainWorld('hunyuan', {
   // params: { imageBase64, steps, octree, mock }
   // -> { ok, glbBase64, glbPath, faces, duration } | { ok:false, error, cancelled? }
   generate3D: (params) => ipcRenderer.invoke('hunyuan:generate3D', params),
+  recoverCompleted3D: () => ipcRenderer.invoke('hunyuan:recoverCompleted3D'),
 
   // Subscribe to progress updates emitted by the main process.
   onProgress: (callback) => {
@@ -77,6 +86,10 @@ contextBridge.exposeInMainWorld('hunyuan', {
 
   // Post-process an existing shape-only GLB with Hunyuan Paint.
   textureGlb: (args) => ipcRenderer.invoke('hunyuan:textureGlb', args),
+
+  // Persist/read a reference image for later Paint continuation.
+  cacheReference: (args) => ipcRenderer.invoke('hunyuan:cacheReference', args),
+  readReference: (filePath) => ipcRenderer.invoke('hunyuan:readReference', filePath),
 
   // Read a cached/saved GLB back as base64 (for gallery re-display).
   readGlb: (filePath) => ipcRenderer.invoke('hunyuan:readGlb', filePath),

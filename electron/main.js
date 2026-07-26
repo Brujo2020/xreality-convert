@@ -8,10 +8,17 @@ const vm = require('node:vm');
 const { spawn } = require('node:child_process');
 const jscadModeling = require('@jscad/modeling');
 const stlSerializer = require('@jscad/stl-serializer');
-const { copyIfChecksumDiffers, copyTreeIfMissing } = require('./file-sync');
-const { nextRestartDelayMs } = require('./process-backoff');
+const { copyIfChecksumDiffers, syncTreeByChecksum } = require('./file-sync');
+const { isTransientLocalPollError, nextRestartDelayMs } = require('./process-backoff');
 const { extractGeneratedText } = require('./ollama-response');
 const { loadedGenerativeModelIds, parseModelKey, rankOmlxModels } = require('./model-routing');
+const { recovered3DFromReport } = require('./hunyuan-recovery');
+const { resolveWithinRoots, safeOutputFilename } = require('./path-policy');
+const {
+  LocalMissionOrchestrator,
+  loadSkillCatalog,
+  skillForPipelineState,
+} = require('./local-orchestrator');
 
 const APP_NAME = 'Xreality Convert';
 const APP_ID = 'com.xreality.convert';
@@ -37,13 +44,46 @@ const APP_SUPPORT_DIR = path.join(
   'XrealityConvert'
 );
 const HISTORY_FILE = path.join(APP_SUPPORT_DIR, 'history.json');
+const MISSION_JOURNAL_FILE = path.join(APP_SUPPORT_DIR, 'superagents.jsonl');
 const STL_CACHE_DIR = path.join(APP_SUPPORT_DIR, 'stl-cache');
+const REFERENCE_CACHE_DIR = path.join(APP_SUPPORT_DIR, 'reference-cache');
 const PICTURES_DIR = path.join(app.getPath('pictures'), 'XrealityConvert');
 const STL_SAVE_DIR = path.join(app.getPath('documents'), 'XrealityConvert');
 const OMLX_SETTINGS_FILE = path.join(os.homedir(), '.omlx', 'settings.json');
+const LOCAL_SKILL_CATALOG = loadSkillCatalog(
+  path.join(__dirname, '..', 'skills', 'xreality-core.json')
+);
+const localMissions = new LocalMissionOrchestrator({ catalog: LOCAL_SKILL_CATALOG });
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
+}
+
+function publishMission(mission, eventType) {
+  if (!mission) return null;
+  const active = mission.tasks.find((task) => task.id === mission.activeTaskId);
+  const event = {
+    missionId: mission.id,
+    event: eventType,
+    status: mission.status,
+    mode: mission.input.mode,
+    activeSkill: active?.skillId || null,
+    at: mission.updatedAt,
+  };
+  ensureDir(APP_SUPPORT_DIR);
+  fsp.appendFile(MISSION_JOURNAL_FILE, `${JSON.stringify(event)}\n`, 'utf8').catch(() => {});
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send('superagents:mission', mission);
+  }
+  return mission;
+}
+
+function transitionMission(missionId, transition) {
+  if (!missionId) return null;
+  const before = localMissions.get(missionId);
+  const mission = localMissions.transition(missionId, transition);
+  if (!mission || (before && before.updatedAt === mission.updatedAt)) return mission;
+  return publishMission(mission, transition.type === 'stage' ? transition.skillId : transition.type);
 }
 
 function freeBytesForPath(targetPath) {
@@ -287,6 +327,18 @@ async function ensureOllamaRunning() {
   }
 }
 
+// --- IPC: deterministic local skills + superagent mission state -------------
+ipcMain.handle('superagents:listSkills', () => localMissions.listSkills());
+
+ipcMain.handle('superagents:preview', (_event, input) => localMissions.preview(input));
+
+ipcMain.handle('superagents:start', (_event, input) => {
+  const mission = localMissions.start(input);
+  return publishMission(mission, 'started');
+});
+
+ipcMain.handle('superagents:active', () => localMissions.get());
+
 // --- IPC: check Ollama status + list image models --------------------------
 ipcMain.handle('ollama:checkStatus', async () => {
   await Promise.all([ensureOllamaRunning(), ensureOmlxRunning()]);
@@ -339,7 +391,15 @@ ipcMain.handle('ollama:pullModel', async (_event, model) => {
 
 // --- IPC: generate image ---------------------------------------------------
 ipcMain.handle('ollama:generate', async (_event, params) => {
-  const { model, prompt, width, height, steps, seed } = params;
+  const { model, prompt, width, height, steps, seed, missionId } = params;
+  const missionFailure = (payload) => {
+    transitionMission(missionId, {
+      type: payload.cancelled ? 'cancelled' : 'failed',
+      error: payload.error,
+    });
+    return payload;
+  };
+  transitionMission(missionId, { type: 'stage', skillId: 'reference.generate' });
   activeController = new AbortController();
   const startedAt = Date.now();
 
@@ -369,34 +429,41 @@ ipcMain.handle('ollama:generate', async (_event, params) => {
         if (res.body) message = res.body;
       }
       if (/not found|no such model|pull/i.test(message)) {
-        return {
+        return missionFailure({
           ok: false,
           error: `Model not found. Run: ollama pull ${model.split(':')[0]}`,
-        };
+        });
       }
-      return { ok: false, error: message };
+      return missionFailure({ ok: false, error: message });
     }
 
     const data = JSON.parse(res.body);
     const image = data.response || data.image || '';
     if (!image) {
-      return { ok: false, error: 'Ollama returned an empty image response.' };
+      return missionFailure({ ok: false, error: 'Ollama returned an empty image response.' });
+    }
+    const mission = localMissions.get(missionId);
+    if (mission?.input.mode === 'image') {
+      transitionMission(missionId, { type: 'stage', skillId: 'quality.image_gate' });
+      transitionMission(missionId, { type: 'done' });
+    } else {
+      transitionMission(missionId, { type: 'stage', skillId: 'reference.guard' });
     }
     return { ok: true, image, duration };
   } catch (err) {
     if (err.message === 'ABORTED') {
-      return { ok: false, cancelled: true, error: 'Generation cancelled.' };
+      return missionFailure({ ok: false, cancelled: true, error: 'Generation cancelled.' });
     }
     if (err.message === 'TIMEOUT') {
-      return { ok: false, error: 'Generation timed out.' };
+      return missionFailure({ ok: false, error: 'Generation timed out.' });
     }
     if (err.code === 'ECONNREFUSED') {
-      return {
+      return missionFailure({
         ok: false,
         error: 'Ollama is not running. Start it with: ollama serve',
-      };
+      });
     }
-    return { ok: false, error: err.message };
+    return missionFailure({ ok: false, error: err.message });
   } finally {
     activeController = null;
   }
@@ -647,8 +714,15 @@ async function requestJscadCode(model, userPrompt, seed, signal, repair) {
 }
 
 const STL_MAX_ATTEMPTS = 3;
+const LEGACY_JSCAD_EXECUTION_ENABLED = false;
 
 ipcMain.handle('ollama:generateStl', async (_event, params) => {
+  if (!LEGACY_JSCAD_EXECUTION_ENABLED) {
+    return {
+      ok: false,
+      error: 'El generador JSCAD legado está deshabilitado; Texto → 3D usa el pipeline seguro FLUX + Hunyuan.',
+    };
+  }
   const { model, prompt, seed, profile, targetFaces } = params;
   const productionConstraint = profile === 'lowpoly'
     ? `\nXR DELIVERY PROFILE: LOW POLY. Use a clean readable silhouette, merge parts, avoid invisible details, use 8-16 segments on curves, and stay below ${targetFaces || 12000} triangles.`
@@ -755,7 +829,13 @@ ipcMain.handle('ollama:generateStl', async (_event, params) => {
 // Read a cached/saved STL file back for re-display from the gallery.
 ipcMain.handle('ollama:readStl', async (_event, filePath) => {
   try {
-    return await fsp.readFile(filePath, 'utf8');
+    const approved = resolveWithinRoots(filePath, [
+      STL_CACHE_DIR,
+      STL_SAVE_DIR,
+      path.join(HUNYUAN_SERVER_DIR, 'jobs'),
+    ]);
+    if (!approved || path.extname(approved).toLowerCase() !== '.stl') return null;
+    return await fsp.readFile(approved, 'utf8');
   } catch {
     return null;
   }
@@ -764,7 +844,9 @@ ipcMain.handle('ollama:readStl', async (_event, filePath) => {
 // Save an STL to ~/Documents/OllamaImageStudio/.
 ipcMain.handle('ollama:saveStl', async (_event, { data, filename }) => {
   ensureDir(STL_SAVE_DIR);
-  const filePath = path.join(STL_SAVE_DIR, filename);
+  const approvedName = safeOutputFilename(filename, ['.stl']);
+  if (!approvedName) throw new Error('Nombre STL no permitido.');
+  const filePath = path.join(STL_SAVE_DIR, approvedName);
   await fsp.writeFile(filePath, data, 'utf8');
   return filePath;
 });
@@ -772,16 +854,25 @@ ipcMain.handle('ollama:saveStl', async (_event, { data, filename }) => {
 // --- IPC: save image to ~/Pictures/OllamaImageStudio/ ----------------------
 ipcMain.handle('ollama:saveImage', async (_event, { base64, filename }) => {
   ensureDir(PICTURES_DIR);
+  const approvedName = safeOutputFilename(filename, ['.png', '.jpg', '.jpeg', '.webp']);
+  if (!approvedName) throw new Error('Nombre de imagen no permitido.');
   const clean = base64.replace(/^data:image\/\w+;base64,/, '');
-  const filePath = path.join(PICTURES_DIR, filename);
+  const filePath = path.join(PICTURES_DIR, approvedName);
   await fsp.writeFile(filePath, Buffer.from(clean, 'base64'));
   return filePath;
 });
 
 // --- IPC: reveal a saved file in Finder ------------------------------------
 ipcMain.handle('ollama:revealInFinder', async (_event, filePath) => {
-  if (filePath && fs.existsSync(filePath)) {
-    shell.showItemInFolder(filePath);
+  const approved = resolveWithinRoots(filePath, [
+    PICTURES_DIR,
+    STL_SAVE_DIR,
+    STL_CACHE_DIR,
+    REFERENCE_CACHE_DIR,
+    path.join(HUNYUAN_SERVER_DIR, 'jobs'),
+  ]);
+  if (approved && fs.existsSync(approved)) {
+    shell.showItemInFolder(approved);
     return true;
   }
   return false;
@@ -882,20 +973,46 @@ let hunyuanInstallProc = null;
 let hunyuanActiveJobId = null;
 let hunyuanRestartAttempts = 0;
 let hunyuanStopping = false;
+let hunyuanLastError = null;
+
+ipcMain.handle('hunyuan:recoverCompleted3D', async () => {
+  const reportsDir = path.join(HUNYUAN_SERVER_DIR, 'jobs', 'reports');
+  let filenames;
+  try {
+    filenames = await fsp.readdir(reportsDir);
+  } catch {
+    return [];
+  }
+  const recovered = [];
+  for (const filename of filenames) {
+    if (!/^[a-f0-9]{32}\.json$/.test(filename)) continue;
+    try {
+      const report = JSON.parse(await fsp.readFile(path.join(reportsDir, filename), 'utf8'));
+      const item = recovered3DFromReport(report, HUNYUAN_SERVER_DIR, fs.existsSync);
+      if (item) recovered.push(item);
+    } catch {}
+  }
+  return recovered
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, 10);
+});
 
 function prepareHunyuanEngineFiles() {
   if (HUNYUAN_SERVER_DIR === BUNDLED_ENGINE_DIR) return;
   ensureDir(HUNYUAN_SERVER_DIR);
-  for (const filename of ['server.py', 'setup.sh', 'job_queue.py', 'job_logging.py', 'geometry_delivery.py', 'storage.py', 'pipeline_states.py', 'pipeline_states.json', 'paint_service.py', 'pbr_glb.py']) {
+  for (const filename of ['server.py', 'setup.sh', 'job_queue.py', 'job_logging.py', 'generation_policy.py', 'material_policy.py', 'texture_quality.py', 'geometry_delivery.py', 'storage.py', 'pipeline_states.py', 'pipeline_states.json', 'paint_service.py', 'pbr_glb.py']) {
     const source = path.join(BUNDLED_ENGINE_DIR, filename);
     if (fs.existsSync(source)) {
       copyIfChecksumDiffers(source, path.join(HUNYUAN_SERVER_DIR, filename));
     }
   }
-  copyTreeIfMissing(
-    path.join(BUNDLED_ENGINE_DIR, 'Hunyuan3D-2.1-mlx', 'hy3dpaint'),
-    path.join(HUNYUAN_SERVER_DIR, 'Hunyuan3D-2.1-mlx', 'hy3dpaint')
-  );
+  const sourceCheckout = path.join(HUNYUAN_SERVER_DIR, 'Hunyuan3D-2.1-mlx');
+  if (fs.existsSync(path.join(sourceCheckout, '.git'))) {
+    syncTreeByChecksum(
+      path.join(BUNDLED_ENGINE_DIR, 'Hunyuan3D-2.1-mlx', 'hy3dpaint'),
+      path.join(sourceCheckout, 'hy3dpaint')
+    );
+  }
 }
 
 function hunyuanIsUp() {
@@ -914,18 +1031,19 @@ function hunyuanIsUp() {
 }
 
 async function startHunyuanServer() {
-  if (await hunyuanIsUp()) return; // already running (e.g. started manually)
+  if (await hunyuanIsUp()) return true; // already running (e.g. started manually)
   hunyuanStopping = false;
   const py = path.join(HUNYUAN_SERVER_DIR, 'venv', 'bin', 'python');
   const script = path.join(HUNYUAN_SERVER_DIR, 'server.py');
   if (!fs.existsSync(py) || !fs.existsSync(script)) {
+    hunyuanLastError = 'El runtime del motor 3D está incompleto.';
     console.warn(
       `[hunyuan] serveur introuvable dans ${HUNYUAN_SERVER_DIR} — Img→3D restera indisponible jusqu'au lancement manuel.`
     );
-    return;
+    return false;
   }
   try {
-    hunyuanServerProc = spawn(py, [script], {
+    const proc = spawn(py, [script], {
       cwd: HUNYUAN_SERVER_DIR,
       env: {
         ...process.env,
@@ -933,10 +1051,19 @@ async function startHunyuanServer() {
           ? { HUNYUAN3D_MLX_WEIGHTS_DIR: process.env.HUNYUAN3D_MLX_WEIGHTS_DIR }
           : {}),
       },
-      stdio: 'ignore',
+      stdio: ['ignore', 'ignore', 'pipe'],
     });
-    hunyuanServerProc.on('exit', () => {
-      hunyuanServerProc = null;
+    hunyuanServerProc = proc;
+    hunyuanLastError = null;
+    let stderrTail = '';
+    proc.stderr.on('data', (data) => {
+      stderrTail = `${stderrTail}${data.toString()}`.slice(-1400);
+    });
+    proc.on('exit', (code) => {
+      if (hunyuanServerProc === proc) hunyuanServerProc = null;
+      if (!hunyuanStopping && code !== 0) {
+        hunyuanLastError = stderrTail.trim() || `El servidor 3D terminó con código ${code}.`;
+      }
       if (hunyuanStopping || hunyuanRestartAttempts >= HUNYUAN_MAX_RESTARTS) return;
       hunyuanRestartAttempts += 1;
       const delay = nextRestartDelayMs(hunyuanRestartAttempts);
@@ -944,9 +1071,23 @@ async function startHunyuanServer() {
         if (!hunyuanStopping) startHunyuanServer();
       }, delay).unref?.();
     });
+    return true;
   } catch (err) {
+    hunyuanLastError = err.message;
     console.warn('[hunyuan] échec du démarrage du serveur 3D :', err.message);
+    return false;
   }
+}
+
+async function waitForHunyuanServer(timeoutMs = 15000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await hunyuanIsUp()) return true;
+    if (!hunyuanServerProc && hunyuanLastError) return false;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  hunyuanLastError ||= 'El servidor 3D no respondió dentro del tiempo esperado.';
+  return false;
 }
 
 function stopHunyuanServer() {
@@ -966,10 +1107,11 @@ ipcMain.handle('hunyuan:health', async () => {
       pathName: '/health',
       timeout: 2000,
     });
-    if (r.statusCode !== 200) return { up: false };
+    if (r.statusCode !== 200) return { up: false, error: hunyuanLastError };
+    hunyuanLastError = null;
     return { up: true, ...JSON.parse(r.body) };
   } catch {
-    return { up: false };
+    return { up: false, error: hunyuanLastError };
   }
 });
 
@@ -1017,7 +1159,10 @@ ipcMain.handle('hunyuan:install', async () => {
     fs.existsSync(path.join(HUNYUAN_SERVER_DIR, 'venv', 'bin', 'python')) &&
     fs.existsSync(path.join(HUNYUAN_SERVER_DIR, 'Hunyuan3D-2.1-mlx', '.git'));
   if (installed) {
-    await startHunyuanServer();
+    const started = await startHunyuanServer();
+    if (!started || !(await waitForHunyuanServer())) {
+      return { ok: false, error: hunyuanLastError || 'No fue posible iniciar el servidor 3D.' };
+    }
     return { ok: true, cached: true };
   }
   const setup = path.join(HUNYUAN_SERVER_DIR, 'setup.sh');
@@ -1036,13 +1181,18 @@ ipcMain.handle('hunyuan:install', async () => {
       hunyuanInstallProc = null;
       resolve({ ok: false, error: err.message });
     });
-    hunyuanInstallProc.on('close', (code) => {
+    hunyuanInstallProc.on('close', async (code) => {
       hunyuanInstallProc = null;
       if (code !== 0) {
         resolve({ ok: false, error: output.join('').slice(-1400) || `El instalador terminó con código ${code}.` });
         return;
       }
-      startHunyuanServer();
+      prepareHunyuanEngineFiles();
+      const started = await startHunyuanServer();
+      if (!started || !(await waitForHunyuanServer())) {
+        resolve({ ok: false, error: hunyuanLastError || 'No fue posible iniciar el servidor 3D.' });
+        return;
+      }
       resolve({ ok: true });
     });
   });
@@ -1076,9 +1226,17 @@ ipcMain.handle('hunyuan:pickImage', async () => {
 // Start a job and poll until done. The mesh build is long (~9 min), so we poll
 // the server's job status rather than holding one giant request.
 ipcMain.handle('hunyuan:generate3D', async (event, params) => {
-  const { imageBase64, steps, octree, texture, textureSize, targetFaces, scale, profile, category, guidance, backgroundMode, subjectPadding, pivot, pivotCustom, upAxis, units, mock } = params;
+  const { imageBase64, steps, octree, texture, textureSize, materialProfile, targetFaces, scale, profile, category, guidance, backgroundMode, subjectPadding, pivot, pivotCustom, upAxis, units, mock, missionId } = params;
+  const missionFailure = (payload) => {
+    transitionMission(missionId, {
+      type: payload.cancelled ? 'cancelled' : 'failed',
+      error: payload.error,
+    });
+    return payload;
+  };
   hunyuanCancelled = false;
   try {
+    transitionMission(missionId, { type: 'stage', skillId: 'reference.guard' });
     event.sender.send('hunyuan:progress', {
       stage: 'Liberando memoria para Hunyuan3D',
       progress: 2,
@@ -1104,6 +1262,7 @@ ipcMain.handle('hunyuan:generate3D', async (event, params) => {
         octree_resolution: octree || 256,
         texture: !!texture,
         texture_size: textureSize === '1K' ? '1K' : '2K',
+        material_profile: materialProfile || 'auto',
         target_faces: targetFaces || 50000,
         scale_meters: scale || 1,
         profile: profile || 'xreal',
@@ -1124,25 +1283,48 @@ ipcMain.handle('hunyuan:generate3D', async (event, params) => {
         const parsed = JSON.parse(startRes.body);
         error = parsed.detail || parsed.error || error;
       } catch {}
-      return { ok: false, error };
+      return missionFailure({ ok: false, error });
     }
     const { job_id } = JSON.parse(startRes.body);
     hunyuanActiveJobId = job_id;
+    let consecutivePollFailures = 0;
 
     // Poll loop.
     for (;;) {
       if (hunyuanCancelled) {
         await hunyuanCancelCurrentJob();
         hunyuanActiveJobId = null;
-        return { ok: false, cancelled: true };
+        return missionFailure({ ok: false, cancelled: true, error: 'Generación 3D cancelada.' });
       }
       await new Promise((r) => setTimeout(r, 1000));
-      const s = await hunyuanRequest({
-        method: 'GET',
-        pathName: `/status/${job_id}`,
-        timeout: 10000,
-      });
+      let s;
+      try {
+        s = await hunyuanRequest({
+          method: 'GET',
+          pathName: `/status/${job_id}`,
+          timeout: 30000,
+        });
+        consecutivePollFailures = 0;
+      } catch (pollError) {
+        if (!isTransientLocalPollError(pollError) || consecutivePollFailures >= 20) {
+          throw pollError;
+        }
+        consecutivePollFailures += 1;
+        event.sender.send('hunyuan:progress', {
+          jobId: job_id,
+          stage: 'MLX ocupado · conservando el job local',
+          progress: 97,
+          percent: 97,
+          remaining: null,
+          status: 'running',
+        });
+        continue;
+      }
       const js = JSON.parse(s.body);
+      const activeSkill = skillForPipelineState(js.state);
+      if (activeSkill) {
+        transitionMission(missionId, { type: 'stage', skillId: activeSkill });
+      }
       event.sender.send('hunyuan:progress', {
         jobId: job_id,
         state: js.state,
@@ -1155,6 +1337,7 @@ ipcMain.handle('hunyuan:generate3D', async (event, params) => {
       if (js.status === 'done') {
         const buf = await fsp.readFile(js.glb_path);
         hunyuanActiveJobId = null;
+        transitionMission(missionId, { type: 'done' });
         return {
           ok: true,
           glbBase64: buf.toString('base64'),
@@ -1166,6 +1349,7 @@ ipcMain.handle('hunyuan:generate3D', async (event, params) => {
           qualityLevel: js.quality_level,
           qualityScore: js.quality_score,
           qualityText: js.quality_text,
+          lowpolyRefinement: js.lowpoly_refinement,
           textureApplied: !!js.texture_applied,
           textureRequested: !!js.texture_requested,
           textureSize: js.texture_size,
@@ -1179,35 +1363,42 @@ ipcMain.handle('hunyuan:generate3D', async (event, params) => {
       }
       if (js.status === 'error') {
         hunyuanActiveJobId = null;
-        return { ok: false, error: js.error || 'Génération 3D échouée.' };
+        return missionFailure({ ok: false, error: js.error || 'Génération 3D échouée.' });
       }
       if (js.status === 'unknown') {
         hunyuanActiveJobId = null;
-        return { ok: false, error: 'Job 3D introuvable.' };
+        return missionFailure({ ok: false, error: 'Job 3D introuvable.' });
       }
       // queued / running -> keep polling
     }
   } catch (err) {
     hunyuanActiveJobId = null;
     if (err.code === 'ECONNREFUSED') {
-      return {
+      return missionFailure({
         ok: false,
         error:
           'Serveur 3D non démarré. Lance-le : cd hunyuan3d-mlx && ./venv/bin/python server.py',
-      };
+      });
     }
-    return { ok: false, error: err.message };
+    return missionFailure({ ok: false, error: err.message });
   }
 });
 
 // Convert a generated GLB into a printable STL (scaled to target_mm).
 ipcMain.handle('hunyuan:convertStl', async (_event, { glbPath, targetMm }) => {
   try {
+    const approvedGlb = resolveWithinRoots(glbPath, [
+      path.join(HUNYUAN_SERVER_DIR, 'jobs'),
+      STL_SAVE_DIR,
+    ]);
+    if (!approvedGlb || path.extname(approvedGlb).toLowerCase() !== '.glb') {
+      return { ok: false, error: 'GLB fuera de los artefactos locales permitidos.' };
+    }
     const r = await hunyuanRequest({
       method: 'POST',
       pathName: '/to-stl',
       timeout: 60000,
-      body: { glb_path: glbPath, target_mm: targetMm || 60 },
+      body: { glb_path: approvedGlb, target_mm: targetMm || 60 },
     });
     if (r.statusCode !== 200) return { ok: false, error: `HTTP ${r.statusCode}` };
     return JSON.parse(r.body);
@@ -1219,8 +1410,13 @@ ipcMain.handle('hunyuan:convertStl', async (_event, { glbPath, targetMm }) => {
   }
 });
 
-ipcMain.handle('hunyuan:textureGlb', async (_event, { glbPath, imageBase64, textureSize }) => {
+ipcMain.handle('hunyuan:textureGlb', async (_event, { glbPath, imageBase64, textureSize, materialProfile, category, missionId }) => {
+  const missionFailure = (payload) => {
+    transitionMission(missionId, { type: 'failed', error: payload.error });
+    return payload;
+  };
   try {
+    transitionMission(missionId, { type: 'stage', skillId: 'material.paint' });
     const r = await hunyuanRequest({
       method: 'POST',
       pathName: '/texture',
@@ -1229,12 +1425,16 @@ ipcMain.handle('hunyuan:textureGlb', async (_event, { glbPath, imageBase64, text
         glb_path: glbPath,
         image_base64: imageBase64,
         texture_size: textureSize === '1K' ? '1K' : '2K',
+        material_profile: materialProfile || 'auto',
+        category: category || 'custom',
       },
     });
-    if (r.statusCode !== 200) return { ok: false, error: `HTTP ${r.statusCode}` };
+    if (r.statusCode !== 200) return missionFailure({ ok: false, error: `HTTP ${r.statusCode}` });
     const js = JSON.parse(r.body);
-    if (!js.ok) return js;
+    if (!js.ok) return missionFailure(js);
     const buf = await fsp.readFile(js.glb_path);
+    transitionMission(missionId, { type: 'stage', skillId: 'quality.pbr_gate' });
+    transitionMission(missionId, { type: 'done' });
     return {
       ok: true,
       glbBase64: buf.toString('base64'),
@@ -1245,15 +1445,50 @@ ipcMain.handle('hunyuan:textureGlb', async (_event, { glbPath, imageBase64, text
     };
   } catch (err) {
     if (err.code === 'ECONNREFUSED') {
-      return { ok: false, error: 'Serveur 3D non démarré.' };
+      return missionFailure({ ok: false, error: 'Serveur 3D non démarré.' });
     }
-    return { ok: false, error: err.message };
+    return missionFailure({ ok: false, error: err.message });
+  }
+});
+
+ipcMain.handle('hunyuan:cacheReference', async (_event, { dataUrl, base64, filename }) => {
+  ensureDir(REFERENCE_CACHE_DIR);
+  const source = dataUrl || base64 || '';
+  const match = /^data:image\/([a-z0-9+.-]+);base64,(.+)$/i.exec(source);
+  const clean = match ? match[2] : source.replace(/^data:image\/\w+;base64,/, '');
+  if (!clean) return null;
+  const ext = match?.[1] === 'jpeg' ? 'jpg' : match?.[1] || 'png';
+  const safeBase = String(filename || `${Date.now()}-reference`)
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 96) || `${Date.now()}-reference`;
+  const filePath = path.join(REFERENCE_CACHE_DIR, `${safeBase}.${ext}`);
+  await fsp.writeFile(filePath, Buffer.from(clean, 'base64'));
+  return filePath;
+});
+
+ipcMain.handle('hunyuan:readReference', async (_event, filePath) => {
+  try {
+    const approved = resolveWithinRoots(filePath, [REFERENCE_CACHE_DIR]);
+    if (!approved || !fs.existsSync(approved)) return null;
+    const ext = path.extname(approved).toLowerCase();
+    const mime = ext === '.jpg' || ext === '.jpeg' ? 'jpeg' : ext === '.webp' ? 'webp' : 'png';
+    const buf = await fsp.readFile(approved);
+    return `data:image/${mime};base64,${buf.toString('base64')}`;
+  } catch {
+    return null;
   }
 });
 
 ipcMain.handle('hunyuan:readGlb', async (_event, filePath) => {
   try {
-    const buf = await fsp.readFile(filePath);
+    const approved = resolveWithinRoots(filePath, [
+      path.join(HUNYUAN_SERVER_DIR, 'jobs'),
+      STL_SAVE_DIR,
+    ]);
+    if (!approved || path.extname(approved).toLowerCase() !== '.glb') return null;
+    const buf = await fsp.readFile(approved);
     return buf.toString('base64');
   } catch {
     return null;
@@ -1262,10 +1497,19 @@ ipcMain.handle('hunyuan:readGlb', async (_event, filePath) => {
 
 ipcMain.handle('hunyuan:saveGlb', async (_event, { srcPath, base64, filename }) => {
   ensureDir(STL_SAVE_DIR); // ~/Documents/OllamaImageStudio
-  const dest = path.join(STL_SAVE_DIR, filename);
-  if (srcPath && fs.existsSync(srcPath)) {
-    await fsp.copyFile(srcPath, dest);
+  const approvedName = safeOutputFilename(filename, ['.glb', '.stl']);
+  if (!approvedName) throw new Error('Nombre de activo no permitido.');
+  const dest = path.join(STL_SAVE_DIR, approvedName);
+  const approvedSource = resolveWithinRoots(srcPath, [
+    path.join(HUNYUAN_SERVER_DIR, 'jobs'),
+    STL_SAVE_DIR,
+  ]);
+  if (approvedSource && fs.existsSync(approvedSource)) {
+    await fsp.copyFile(approvedSource, dest);
   } else {
+    if (!base64 || path.extname(approvedName).toLowerCase() !== '.glb') {
+      throw new Error('Fuente de activo no permitida.');
+    }
     await fsp.writeFile(dest, Buffer.from(base64, 'base64'));
   }
   return dest;

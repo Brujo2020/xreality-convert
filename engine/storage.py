@@ -24,6 +24,9 @@ def cleanup_old_temporaries(root, older_than_seconds, now=None):
             continue
         if current_time - path.stat().st_mtime < older_than_seconds:
             continue
-        path.unlink()
+        try:
+            path.unlink()
+        except OSError:
+            continue
         removed.append(path.name)
     return removed

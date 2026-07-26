@@ -39,6 +39,16 @@ find_python() {
   return 1
 }
 
+if [[ "${1:-}" == "--preflight" ]]; then
+  PYTHON_BIN="$(find_python || true)"
+  if [[ -z "$PYTHON_BIN" ]]; then
+    echo "Python 3.11 o 3.12 no está disponible en este equipo."
+    exit 1
+  fi
+  echo "$PYTHON_BIN"
+  exit 0
+fi
+
 if [[ -f "$MARKER" && "$(cat "$MARKER")" == "$INSTALL_VERSION" && -x "$RUNTIME/bin/python" && -d "$SOURCE/.git" ]]; then
   if python_supports_mlx "$RUNTIME/bin/python"; then
     echo "Motor Hunyuan3D ya instalado; reutilizando entorno local."
@@ -55,11 +65,6 @@ Python 3.11 o 3.12 no está disponible en este equipo.
 Instala Python 3.11 o 3.12 y vuelve a intentar la instalación del motor 3D.
 EOF
   exit 1
-fi
-
-if [[ "${1:-}" == "--preflight" ]]; then
-  echo "$PYTHON_BIN"
-  exit 0
 fi
 
 rm -rf "$RUNTIME"

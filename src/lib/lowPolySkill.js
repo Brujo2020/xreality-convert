@@ -7,7 +7,7 @@ export function applyLowPolySkill(asset = {}) {
     profile: 'lowpoly',
     octree: XR_PROFILES.lowpoly.octree,
     targetFaces: XR_PROFILES.lowpoly.targetFaces,
-    textureSize: asset.texture ? '1K' : asset.textureSize || 'Sin textura',
+    textureSize: asset.texture ? '2K' : asset.textureSize || 'Sin textura',
   };
 }
 

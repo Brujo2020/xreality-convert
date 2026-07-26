@@ -1,4 +1,5 @@
 import gc
+import secrets
 import shutil
 import sys
 from pathlib import Path
@@ -8,8 +9,8 @@ from pbr_glb import validate_pbr_glb
 
 SOURCE = Path(__file__).resolve().parent / "Hunyuan3D-2.1-mlx" / "hy3dpaint"
 PAINT_PROFILES = {
-    "1K": {"views": 4, "resolution": 256, "steps": 10, "texture_size": 1024, "super_res": False},
-    "2K": {"views": 6, "resolution": 512, "steps": 15, "texture_size": 2048, "super_res": True},
+    "1K": {"views": 6, "resolution": 512, "steps": 15, "texture_size": 1024, "super_res": False},
+    "2K": {"views": 6, "resolution": 512, "steps": 24, "texture_size": 2048, "super_res": True},
 }
 
 
@@ -39,18 +40,34 @@ class PaintService:
         self.pipeline_factory = pipeline_factory
         self.validator = validator
 
-    def run(self, mesh_path, image_path, output_glb_path, texture_size="2K"):
+    def run(
+        self,
+        mesh_path,
+        image_path,
+        output_glb_path,
+        texture_size="2K",
+        texture_seed=None,
+        material_profile="auto",
+        category="custom",
+    ):
         output_glb = Path(output_glb_path)
         output_obj = output_glb.with_suffix(".obj")
         pipeline = self.pipeline_factory(texture_size)
+        texture_seed = secrets.randbelow(2**31) if texture_seed is None else int(texture_seed)
+        paint_metrics = {}
+        if getattr(pipeline, "config", None) is not None:
+            pipeline.config.mlx_seed = texture_seed
+            pipeline.config.material_profile = material_profile
+            pipeline.config.material_category = category
         try:
             pipeline(
                 mesh_path=str(mesh_path),
                 image_path=str(image_path),
                 output_mesh_path=str(output_obj),
-                use_remesh=True,
+                use_remesh=False,
                 save_glb=True,
             )
+            paint_metrics = getattr(pipeline, "last_paint_metrics", None) or {}
         finally:
             del pipeline
             gc.collect()
@@ -69,4 +86,10 @@ class PaintService:
         report = self.validator(output_glb)
         if not report.get("passed"):
             raise RuntimeError("PBR validation failed: " + ", ".join(report.get("reasons", [])))
+        report = {
+            **report,
+            "texture_seed": texture_seed,
+            "paint_profile": paint_profile(texture_size),
+            **paint_metrics,
+        }
         return report

@@ -26,4 +26,21 @@ function copyTreeIfMissing(sourceDir, targetDir) {
   return true;
 }
 
-module.exports = { copyIfChecksumDiffers, copyTreeIfMissing, sha256File };
+function syncTreeByChecksum(sourceDir, targetDir) {
+  if (!fs.existsSync(sourceDir)) return 0;
+  let copied = 0;
+  for (const entry of fs.readdirSync(sourceDir, { withFileTypes: true })) {
+    if (entry.name === '__pycache__' || entry.name.endsWith('.pyc')) continue;
+    const source = path.join(sourceDir, entry.name);
+    const target = path.join(targetDir, entry.name);
+    if (entry.isDirectory()) {
+      copied += syncTreeByChecksum(source, target);
+      continue;
+    }
+    fs.mkdirSync(targetDir, { recursive: true });
+    copied += copyIfChecksumDiffers(source, target) ? 1 : 0;
+  }
+  return copied;
+}
+
+module.exports = { copyIfChecksumDiffers, copyTreeIfMissing, sha256File, syncTreeByChecksum };

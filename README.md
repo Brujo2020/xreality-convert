@@ -9,7 +9,7 @@ Xreality Convert is a standalone macOS app maintained in [Brujo2020/xreality-con
 Xreality Convert is a macOS desktop app for keeping local AI asset creation in one place:
 
 - Image generation with Ollama
-- Text to 3D STL generation with local JSCAD
+- Text to 3D generation with local FLUX + Hunyuan3D MLX
 - Image to 3D reconstruction with local Hunyuan3D MLX
 
 La app está pensada para trabajar en local, con historial, diagnóstico y exportación segura para macOS.
@@ -17,15 +17,16 @@ La app está pensada para trabajar en local, con historial, diagnóstico y expor
 ## What it does
 
 - Generates images locally through Ollama
-- Turns prompts into 3D STL geometry with JSCAD
+- Turns prompts into references and reconstructs them as GLB assets
 - Reconstructs images into 3D assets with local Hunyuan3D MLX
+- Orchestrates file-backed, allowlisted skills with deterministic local superagents
 - Keeps history, previews, and diagnostics on your Mac
-- Ships as a signed and notarized DMG for safer installation
 
 ## Quick Highlights
 
 - Native macOS app with Electron + React
-- Local-first workflows, no cloud required for the core app
+- Local-first workflows; inference stays offline after runtimes and model weights are installed
+- Mission Control with an offline skill DAG and live specialist states
 - Automatic Ollama health checks and model discovery
 - Cancelable jobs and local history
 - Bilingual documentation and a complete user manual
@@ -62,7 +63,6 @@ The release DMG is signed and notarized for safer installation on Mac.
 - Cancelable jobs and local history
 - Bilingual documentation and a current user manual
 - Native macOS branding, favicon, icon, and dock identity
-- Signed and notarized DMG distribution
 
 ## Workflows
 
@@ -70,9 +70,9 @@ The release DMG is signed and notarized for safer installation on Mac.
 
 Use this mode to generate local images from prompts, then reuse them as references or export assets for the rest of the pipeline.
 
-### Text to STL
+### Text to 3D
 
-Use this mode to generate parametric STL geometry from a natural-language description.
+Use this mode to create a clean local reference with FLUX and reconstruct a production GLB with Hunyuan3D MLX. The legacy model-generated JSCAD executor is disabled.
 
 ### Image to 3D
 
@@ -93,13 +93,14 @@ npm run dev
 npm run build
 ```
 
-This produces a signed `.app` and a `.dmg` in `release/`.
+This produces a local `.app` and `.dmg` in `release/`. Signing and notarization are separate release gates and must be verified independently.
 
 ## Manual
 
 Read the full bilingual manual here:
 
 - [`docs/MANUAL.md`](docs/MANUAL.md)
+- [`docs/local-superagents.md`](docs/local-superagents.md)
 
 ## Image to 3D
 
