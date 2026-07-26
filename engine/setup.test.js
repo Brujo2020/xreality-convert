@@ -34,6 +34,7 @@ test('packaged app includes Hunyuan Paint runtime files', () => {
   const generationPolicy = 'engine/generation_policy.py';
   const materialPolicy = 'engine/material_policy.py';
   const textureQuality = 'engine/texture_quality.py';
+  const enginePatches = 'engine/patches/**/*';
 
   assert.ok(pkg.build.files.includes(paintRuntime));
   assert.ok(pkg.build.asarUnpack.includes(paintRuntime));
@@ -43,6 +44,8 @@ test('packaged app includes Hunyuan Paint runtime files', () => {
   assert.ok(pkg.build.asarUnpack.includes(materialPolicy));
   assert.ok(pkg.build.files.includes(textureQuality));
   assert.ok(pkg.build.asarUnpack.includes(textureQuality));
+  assert.ok(pkg.build.files.includes(enginePatches));
+  assert.ok(pkg.build.asarUnpack.includes(enginePatches));
 });
 
 test('engine updater copies every local server module', () => {

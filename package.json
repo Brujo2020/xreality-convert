@@ -53,6 +53,7 @@
       "engine/pipeline_states.json",
       "engine/paint_service.py",
       "engine/pbr_glb.py",
+      "engine/patches/**/*",
       "engine/Hunyuan3D-2.1-mlx/hy3dpaint/**/*",
       "engine/setup.sh"
     ],
@@ -72,6 +73,7 @@
       "engine/pipeline_states.json",
       "engine/paint_service.py",
       "engine/pbr_glb.py",
+      "engine/patches/**/*",
       "engine/Hunyuan3D-2.1-mlx/hy3dpaint/**/*",
       "engine/setup.sh",
       "dist/**/*"

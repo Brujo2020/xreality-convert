@@ -1,0 +1,27 @@
+diff --git a/hy3dpaint/utils/pipeline_utils_mlx.py b/hy3dpaint/utils/pipeline_utils_mlx.py
+--- a/hy3dpaint/utils/pipeline_utils_mlx.py
++++ b/hy3dpaint/utils/pipeline_utils_mlx.py
+@@ -46,11 +46,9 @@ class ViewProcessorMLX:
+ 
+         # Render alpha (face indices) for all candidates
+         viewed_tri_idxs = []
+-        viewed_masks = []
+         for elev, azim in zip(candidate_camera_elevs, candidate_camera_azims):
+             tri_idx = self.render.render_alpha(elev, azim, return_type="np")
+             viewed_tri_idxs.append(set(np.unique(tri_idx.flatten()).tolist()))
+-            viewed_masks.append(tri_idx[0, :, :, 0] > 0)
+ 
+         is_selected = [False] * n_candidates
+         total_viewed = set()
+@@ -103,10 +101,8 @@ class ViewProcessorMLX:
+             cos_map = weight * (cos_map ** self.config.bake_exp)
+             textures.append(texture)
+             cos_maps.append(cos_map)
+-            # Incrementally merge (matches original behavior)
+-            merged, trust = self.render.fast_bake_texture(textures, cos_maps)
+ 
+-        return merged, trust
++        return self.render.fast_bake_texture(textures, cos_maps)
+ 
+     def texture_inpaint(self, texture, mask, default=None):
+         """Inpaint missing texture regions.

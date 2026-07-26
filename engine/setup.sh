@@ -77,5 +77,10 @@ if [[ ! -d "$SOURCE/.git" ]]; then
   git clone --depth 1 https://github.com/dgrauet/Hunyuan3D-2.1-mlx.git "$SOURCE"
 fi
 
+PAINT_PATCH="$ENGINE_DIR/patches/hunyuan-paint-bake-once.patch"
+if [[ -f "$PAINT_PATCH" ]] && git -C "$SOURCE" apply --check "$PAINT_PATCH" >/dev/null 2>&1; then
+  git -C "$SOURCE" apply "$PAINT_PATCH"
+fi
+
 echo "$INSTALL_VERSION" > "$MARKER"
 echo "Motor Hunyuan3D MLX instalado. Los pesos se descargarán automáticamente en la primera conversión."
