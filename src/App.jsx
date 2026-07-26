@@ -310,7 +310,7 @@ export default function App() {
         ['engine', 'Motor MLX', generating && progress.percent >= 15 && progress.percent < 82 ? 'active' : progress.percent >= 82 ? 'done' : 'pending'],
         ['optimize', 'Optimización', generating && progress.percent >= 82 && progress.percent < 94 ? 'active' : progress.percent >= 94 ? 'done' : 'pending'],
         ['audit', 'Auditoría', result?.type === 'glb' ? 'done' : generating && progress.percent >= 94 ? 'active' : 'pending'],
-        ['export', 'Exportación', result?.type === 'glb' ? 'active' : 'pending'],
+        ['export', 'Exportación', result?.type === 'glb' ? 'done' : 'pending'],
       ];
     }
     if (mode === 'stl') {
@@ -1166,6 +1166,33 @@ export default function App() {
         toolsChecking={toolsChecking}
         onToolsRefresh={() => checkLocalTools(true)}
       />
+
+      {processing && (
+        <div
+          role="progressbar"
+          aria-label={progress.label}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={progress.percent}
+          className="pointer-events-none absolute bottom-4 left-1/2 z-50 w-[calc(100%-2rem)] max-w-[560px] -translate-x-1/2 rounded-xl border border-cyan-300/25 bg-[#031128]/95 px-4 py-3 shadow-[0_18px_60px_rgba(0,5,20,0.65)] backdrop-blur-xl"
+        >
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="truncate text-xs font-semibold text-cyan-50">{progress.label}</p>
+              <p className="mt-0.5 truncate font-mono text-[8px] uppercase tracking-wider text-cyan-300/65">
+                {mission?.tasks?.find((task) => task.status === 'running')?.agent || 'Motor local MLX'}
+              </p>
+            </div>
+            <strong className="font-mono text-lg tabular-nums text-white">{progress.percent}%</strong>
+          </div>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-950">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-300 transition-all duration-500"
+              style={{ width: `${progress.percent}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       <div className="relative z-10 grid min-h-0 flex-1 grid-cols-[minmax(300px,340px)_minmax(0,1fr)] gap-2 p-2 xl:grid-cols-[380px_minmax(0,1fr)_300px] xl:gap-3 xl:p-3">
         {/* Left: form */}

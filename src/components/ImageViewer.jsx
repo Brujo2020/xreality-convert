@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useState, useEffect, useCallback } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useCallback, useRef } from 'react';
 import { USE_CASES } from '../lib/useCases.js';
 import { XR_PROFILES, profileAudit } from '../lib/xrProfiles.js';
 import { getAuditSemaphore } from '../lib/uiStatus.js';
@@ -260,6 +260,7 @@ export default function ImageViewer({
   const [texturePreview, setTexturePreview] = useState(null);
   const [canonicalRenders, setCanonicalRenders] = useState(null);
   const [textureApproved, setTextureApproved] = useState(false);
+  const viewportRef = useRef(null);
   const textureNeedsReview = result?.textured && result?.textureRequested && !textureApproved;
   const geometryBlocked = result?.qualityLevel === 'critico';
   const exportBlocked = geometryBlocked || missingRequestedTexture || textureNeedsReview;
@@ -274,6 +275,10 @@ export default function ImageViewer({
     setCanonicalRenders(null);
     setTextureApproved(false);
   }, [result?.id, result?.filePath, result?.glbBase64, defaultSaveLabel]);
+
+  useEffect(() => {
+    if (!processing && result) viewportRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+  }, [processing, result?.id, result?.glbBase64]);
 
   const handleGltfInspection = useCallback((inspection) => {
     setTexturePreview(inspection);
@@ -395,8 +400,8 @@ export default function ImageViewer({
     }
 
     return (
-      <div className="flex h-full w-full flex-col items-center gap-4">
-        <div className="flex min-h-0 flex-1 items-stretch justify-center self-stretch">
+      <div className="flex min-h-full w-full flex-col items-center gap-4">
+        <div className="flex h-[clamp(360px,52vh,620px)] shrink-0 items-stretch justify-center self-stretch">
           {isGlb && result.textured && result.shapeGlbBase64 ? (
             <div className="grid h-full w-full gap-2 md:grid-cols-2">
               <div className="relative min-h-0 overflow-hidden rounded-xl border border-border shadow-2xl">
@@ -582,7 +587,14 @@ export default function ImageViewer({
   };
 
   return (
-    <div className="relative flex h-full items-center justify-center overflow-hidden p-6">
+    <div
+      ref={viewportRef}
+      className={`scroll-dark relative flex h-full justify-center ${
+        processing || error || !result
+          ? 'items-center overflow-hidden p-6'
+          : 'items-start overflow-y-auto p-4'
+      }`}
+    >
       {renderBody()}
     </div>
   );
