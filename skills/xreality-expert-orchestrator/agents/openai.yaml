@@ -1,0 +1,4 @@
+interface:
+  display_name: "Xreality Expert Orchestrator"
+  short_description: "Ruta expertos locales sin repetir trabajo"
+  default_prompt: "Usa $xreality-expert-orchestrator para dividir esta misión XR entre expertos locales y reutilizar evidencia válida."

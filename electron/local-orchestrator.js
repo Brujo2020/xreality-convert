@@ -201,13 +201,13 @@ class LocalMissionOrchestrator {
       return publicSnapshot(mission);
     }
     if (event.type === 'done') {
-      mission.tasks.forEach((item) => {
-        if (!TERMINAL_STATUSES.has(item.status)) {
-          item.status = 'done';
-          item.startedAt ||= at;
-          item.finishedAt = at;
-        }
-      });
+      const currentIndex = mission.tasks.findIndex((item) => item.id === mission.activeTaskId);
+      if (currentIndex !== mission.tasks.length - 1) return publicSnapshot(mission);
+      const current = mission.tasks[currentIndex];
+      current.status = 'done';
+      current.startedAt ||= at;
+      current.finishedAt = at;
+      current.evidence = { type: 'pipeline-complete', at };
       mission.status = 'done';
       mission.activeTaskId = null;
       mission.updatedAt = at;
@@ -217,7 +217,8 @@ class LocalMissionOrchestrator {
     if (event.type !== 'stage') return publicSnapshot(mission);
     const index = mission.tasks.findIndex((item) => item.skillId === event.skillId);
     if (index < 0) return publicSnapshot(mission);
-    if (mission.activeTaskId === mission.tasks[index].id && mission.tasks[index].status === 'running') {
+    const currentIndex = mission.tasks.findIndex((item) => item.id === mission.activeTaskId);
+    if (index <= currentIndex) {
       return publicSnapshot(mission);
     }
     mission.tasks.forEach((item, itemIndex) => {
@@ -225,6 +226,7 @@ class LocalMissionOrchestrator {
         item.status = 'done';
         item.startedAt ||= at;
         item.finishedAt = at;
+        item.evidence ||= { type: 'pipeline-stage', nextSkillId: event.skillId, at };
       } else if (itemIndex === index && !TERMINAL_STATUSES.has(item.status)) {
         item.status = 'running';
         item.startedAt ||= at;

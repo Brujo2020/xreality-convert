@@ -97,6 +97,43 @@ test('repeated backend polls for the same skill are idempotent', () => {
   assert.deepEqual(repeated.tasks, first.tasks);
 });
 
+test('late backend polls never regress completed expert work', () => {
+  const local = orchestrator();
+  local.start({ mode: 'image3d', texture: true });
+  const advanced = local.transition('mission-test', {
+    type: 'stage',
+    skillId: 'quality.pbr_gate',
+  });
+  const late = local.transition('mission-test', {
+    type: 'stage',
+    skillId: 'geometry.reconstruct',
+  });
+  assert.equal(late.updatedAt, advanced.updatedAt);
+  assert.equal(late.activeTaskId, advanced.activeTaskId);
+  assert.equal(late.tasks.find((item) => item.skillId === 'quality.pbr_gate').status, 'running');
+});
+
+test('done cannot fabricate evidence for skipped experts', () => {
+  const local = orchestrator();
+  const started = local.start({ mode: 'image3d', texture: true });
+  const unchanged = local.transition('mission-test', { type: 'done' });
+  assert.equal(unchanged.status, 'running');
+  assert.equal(unchanged.updatedAt, started.updatedAt);
+  assert.equal(unchanged.tasks.at(-1).status, 'blocked');
+});
+
+test('done closes only the final expert with explicit evidence', () => {
+  const local = orchestrator();
+  local.start({ mode: 'image', texture: false });
+  local.transition('mission-test', {
+    type: 'stage',
+    skillId: 'delivery.manifest',
+  });
+  const done = local.transition('mission-test', { type: 'done' });
+  assert.equal(done.status, 'done');
+  assert.equal(done.tasks.at(-1).evidence.type, 'pipeline-complete');
+});
+
 test('failure is terminal and records the bounded local error', () => {
   const local = orchestrator();
   local.start({ mode: 'image' });

@@ -445,6 +445,7 @@ ipcMain.handle('ollama:generate', async (_event, params) => {
     const mission = localMissions.get(missionId);
     if (mission?.input.mode === 'image') {
       transitionMission(missionId, { type: 'stage', skillId: 'quality.image_gate' });
+      transitionMission(missionId, { type: 'stage', skillId: 'delivery.manifest' });
       transitionMission(missionId, { type: 'done' });
     } else {
       transitionMission(missionId, { type: 'stage', skillId: 'reference.guard' });
@@ -1337,6 +1338,7 @@ ipcMain.handle('hunyuan:generate3D', async (event, params) => {
       if (js.status === 'done') {
         const buf = await fsp.readFile(js.glb_path);
         hunyuanActiveJobId = null;
+        transitionMission(missionId, { type: 'stage', skillId: 'delivery.manifest' });
         transitionMission(missionId, { type: 'done' });
         return {
           ok: true,
@@ -1434,6 +1436,7 @@ ipcMain.handle('hunyuan:textureGlb', async (_event, { glbPath, imageBase64, text
     if (!js.ok) return missionFailure(js);
     const buf = await fsp.readFile(js.glb_path);
     transitionMission(missionId, { type: 'stage', skillId: 'quality.pbr_gate' });
+    transitionMission(missionId, { type: 'stage', skillId: 'delivery.manifest' });
     transitionMission(missionId, { type: 'done' });
     return {
       ok: true,
