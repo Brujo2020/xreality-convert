@@ -1,10 +1,36 @@
+```
+# Compiled and build artifacts
+*.pyc
+__pycache__/
+*.o
+*.obj
+
+# Dependencies
+.venv/
+venv/
 node_modules/
-dist/
-release/
-.DS_Store
+
+# Logs and temp files
 *.log
-engine/venv/
-engine/Hunyuan3D-2.1-mlx/
-engine/jobs/
-engine/__pycache__/
-engine/.installed
+*.tmp
+*.swp
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+
+# Coverage
+.coverage
+coverage/
+htmlcov/
+
+# Build directories
+dist/
+build/
+target/
+```
