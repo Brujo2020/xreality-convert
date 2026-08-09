@@ -1,0 +1,27 @@
+- 2026-08-01: Un GLB PBR estructuralmente válido y una vista frontal aceptable pueden ocultar fragmentación grave a 30°; validar evidencia neutral multivista antes de publicar.
+- 2026-08-01: Tencent Cloud Hunyuan 3D 3.1 acepta hasta ocho vistas y no equivale al modelo abierto Hunyuan3D 2.1 local; no declarar paridad de servicio.
+- 2026-08-01: El primer microbenchmark del gate llamó el rasterizador en vez de enviarlo al executor; guardar futuros de `submit(...)` antes de medir paralelismo.
+- 2026-08-01: Tres threads de raster Python fueron 1.9 s frente a 1.0 s serial en 512 px; paralelizar hashes/PNG y vectorizar culling, no el loop por cara.
+- 2026-08-01: MLX 0.32 deprecó los controles `mx.metal.*`; usar `mx.set_cache_limit`, `mx.clear_cache` y métricas top-level para no heredar warnings.
+- 2026-08-01: El smoke Electron reveló que CSP sin `blob:` bloqueaba texturas GLB embebidas; verificar consola real y permitir `blob:` solo en `img-src`/`connect-src`.
+- 2026-08-01: `renderer.setSize(..., false)` con pixel ratio 1.5 dejó el canvas a 1.5x CSS y recortó el modelo; permitir que Three actualice el tamaño CSS.
+- 2026-08-01: Un `server.py` huérfano con PPID 1 mantuvo el puerto 8765 por horas; exigir `engine_version` y reemplazar solo el listener cuya ruta coincide exactamente con el engine propio.
+- 2026-08-01: Copiar un servidor nuevo sin validar `.installed` y la revisión Shape arrancó código v6 sobre runtime v4; versión de servidor, instalador y fuente empaquetada deben avanzar como un solo contrato.
+- 2026-08-01: El pipeline sí podía seguir calculando mientras la UI quedaba fija en 15%; publicar progreso por paso del denoiser y persistir la salida del proceso para separar lentitud de caída.
+- 2026-08-01: El paquete Shape es namespace desde la raíz Hunyuan; el preflight requiere `PYTHONPATH=$SOURCE`, no `$SOURCE/hy3dshape`, o `hy3dshape.hy3dshape` deja de resolver.
+- 2026-08-01: Dos bundles abiertos en paralelo pueden superar el chequeo libre del puerto y lanzar dos Uvicorn; adquirir el lock de instancia única antes de iniciar el motor.
+- 2026-08-02: Para consultar HF online hay que retirar `HF_HUB_OFFLINE` y `TRANSFORMERS_OFFLINE`; cualquiera de las dos mantiene el Hub sin red.
+- 2026-08-02: Un comando posterior ocultó el exit code de una inferencia fallida; usar `set -e` o preservar el retorno del proveedor antes de imprimir métricas.
+- 2026-08-02: El gate Paint aprobó un zorro visiblemente fragmentado y embarrado; la promoción requiere umbral arena más estricto y aceptación visual humana/ciega.
+- 2026-08-02: Este checkout no define `test:tools`; verificar `package.json` y ejecutar `test:runtime`, `test:engine`, arena y build en vez de asumir scripts de otra revisión.
+- 2026-08-02: Los SHA256 AgenticVibes inferidos antes de descargar no coincidían; el preflight profundo detectó el error y el manifiesto se corrigió con hashes de los bytes locales fijados.
+- 2026-08-02: TRELLIS.2 Apple encontró Xcode pero no su componente Metal Toolchain; `mtldiffrast` no compila y sus tres pruebas se omiten, así que no hay evidencia E2E.
+- 2026-08-02: `requirements_macos.txt` de TRELLIS apunta extensiones a `main` y exige Transformers `<5`; fijar commits y aislar entorno antes de instalar.
+- 2026-08-02: xocialize TRELLIS2 Swift compila y pasa gates offline, pero hasta res512 declara 18 GB residentes + 18 GB de activación; un Mac de 24 GB debe rechazarlo antes de inferir.
+- 2026-08-02: Metal Toolchain 17F109 se instaló y mtldiffrast pasó 3/3; como `xcode-select` sigue en CommandLineTools, los builds Metal deben fijar `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`.
+- 2026-08-02: cumesh importa `mtlbvh` en macOS aunque no lo declara en su metadata ni requirements; fijar el commit del submódulo antes del smoke.
+- 2026-08-02: TRELLIS E2E no debe descargar 16.2 GB si los preflights de DINOv3 y RMBG responden `Access denied`; resolver aprobaciones HF primero.
+- 2026-08-02: TRELLIS importa `easydict` durante el pipeline pero `requirements_macos.txt` no lo declara; el entorno E2E debe fijarlo explícitamente.
+- 2026-08-02: El venv arena conservó paquetes pero sus symlinks apuntaban a un Python 3.11 eliminado; verificar el intérprete antes de atribuir fallos a los tests.
+- 2026-08-02: Un download HF fijado por commit no crea necesariamente `refs/main`; ports offline deben pasar la revisión explícita a cada `hf_hub_download`.
+- 2026-08-02: `trimesh.split()` agotó memoria al auditar un GLB muy fragmentado; contar etiquetas de componentes evita materializar miles de meshes.

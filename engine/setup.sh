@@ -4,8 +4,13 @@ set -euo pipefail
 ENGINE_DIR="${0:A:h}"
 RUNTIME="$ENGINE_DIR/venv"
 SOURCE="$ENGINE_DIR/Hunyuan3D-2.1-mlx"
+AGENTIC_SOURCE="$ENGINE_DIR/AgenticVibes-Hunyuan3D-Paint"
+AGENTIC_RASTERIZER="$AGENTIC_SOURCE/hy3dpaint/custom_rasterizer"
 MARKER="$ENGINE_DIR/.installed"
-INSTALL_VERSION="5"
+LOCKFILE="$ENGINE_DIR/requirements-macos.lock"
+INSTALL_VERSION="18"
+SOURCE_REVISION="xreality-buffalo-mlx-openusd-watertight-v2"
+SOURCE_MARKER="$ENGINE_DIR/.source-version"
 
 python_supports_mlx() {
   local python_bin="$1"
@@ -17,8 +22,25 @@ PY
 }
 
 find_python() {
-  for candidate in python3.11 python3.12 python3.10; do
-    if command -v "$candidate" >/dev/null && python_supports_mlx "$candidate"; then
+  local candidates=(
+    "${XREALITY_PYTHON:-}"
+    /opt/homebrew/bin/python3.11
+    /opt/homebrew/bin/python3.12
+    /usr/local/bin/python3.11
+    /usr/local/bin/python3.12
+    "$HOME/.local/bin/python3.11"
+    "$HOME/.local/bin/python3.12"
+    python3.11
+    python3.12
+    python3.10
+  )
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    [[ -n "$candidate" ]] || continue
+    if { [[ "$candidate" == */* ]] && [[ -x "$candidate" ]]; } || command -v "$candidate" >/dev/null; then
+      if ! python_supports_mlx "$candidate"; then
+        continue
+      fi
       echo "$candidate"
       return 0
     fi
@@ -26,7 +48,12 @@ find_python() {
   return 1
 }
 
-if [[ -f "$MARKER" && "$(cat "$MARKER")" == "$INSTALL_VERSION" && -x "$RUNTIME/bin/python" && -d "$SOURCE/.git" ]]; then
+if [[ "${1:-}" == "--find-python" ]]; then
+  find_python
+  exit $?
+fi
+
+if [[ -f "$MARKER" && "$(cat "$MARKER")" == "$INSTALL_VERSION" && -f "$SOURCE_MARKER" && "$(cat "$SOURCE_MARKER")" == "$SOURCE_REVISION" && -x "$RUNTIME/bin/python" ]]; then
   if python_supports_mlx "$RUNTIME/bin/python"; then
     echo "Motor Hunyuan3D Premium ya instalado; reutilizando entorno local."
     exit 0
@@ -35,60 +62,95 @@ if [[ -f "$MARKER" && "$(cat "$MARKER")" == "$INSTALL_VERSION" && -x "$RUNTIME/b
   rm -rf "$RUNTIME"
 fi
 
-PYTHON_BIN="$(find_python || true)"
-if [[ -z "$PYTHON_BIN" ]]; then
-  cat <<'EOF'
+if [[ -x "$RUNTIME/bin/python" ]] && ! python_supports_mlx "$RUNTIME/bin/python"; then
+  echo "El entorno Python local es incompatible; se reinstalará con una versión soportada."
+  rm -rf "$RUNTIME"
+fi
+
+if [[ -d "$RUNTIME" && ! -x "$RUNTIME/bin/python" ]]; then
+  echo "El entorno Python local está incompleto; se recreará sin tocar modelos ni resultados."
+  rm -rf "$RUNTIME"
+fi
+
+if [[ ! -x "$RUNTIME/bin/python" ]]; then
+  PYTHON_BIN="$(find_python || true)"
+  if [[ -z "$PYTHON_BIN" ]]; then
+    cat <<'EOF'
 Python 3.10 o superior no está disponible en este equipo.
 Instala Python 3.11 o 3.12 y vuelve a intentar la instalación del motor 3D.
 EOF
+    exit 1
+  fi
+  "$PYTHON_BIN" -m venv "$RUNTIME"
+fi
+
+source "$RUNTIME/bin/activate"
+if [[ ! -f "$LOCKFILE" ]]; then
+  echo "No se encontró el lock de dependencias: $LOCKFILE"
+  exit 1
+fi
+echo "📦 Instalando el runtime macOS reproducible..."
+python -m pip install --prefer-binary --disable-pip-version-check -r "$LOCKFILE"
+
+if [[ ! -f "$SOURCE/hy3dshape/hy3dshape/pipeline_mlx.py" || ! -f "$SOURCE/hy3dpaint/textureGenPipeline_mlx.py" ]]; then
+  echo "La fuente Shape/Paint no está incluida. Reinstala Xreality Convert desde el DMG."
   exit 1
 fi
 
-rm -rf "$RUNTIME"
-"$PYTHON_BIN" -m venv "$RUNTIME"
-source "$RUNTIME/bin/activate"
-python -m pip install --upgrade pip
-
-# ============================================
-# CORE MLX STACK - OPTIMIZED FOR APPLE SILICON
-# ============================================
-echo "📦 Instalando MLX y dependencias base..."
-python -m pip install torch torchvision torchaudio mlx mlx-lm mlx-arsenal safetensors
-
-echo "📦 Instalando servidor y utilidades..."
-python -m pip install Pillow fastapi "uvicorn[standard]" trimesh fast-simplification pymeshlab pygltflib scikit-image PyMCubes scipy huggingface_hub
-
-echo "📦 Instalando procesamiento geométrico avanzado..."
-python -m pip install xatlas opencv-python numpy-stl open3d manifold3d pymeshfix
-
-echo "📦 Instalando pipeline PBR profesional..."
-python -m pip install diffusers transformers einops omegaconf tqdm rembg onnxruntime kornia basicsr gfpgan realesrgan invisible-watermark
-
-echo "📦 Instalando utilidades premium..."
-python -m pip install imageio pyvista
-
-# Optional: BLIP2 for text-to-image multiview (commented for minimal install)
-# python -m pip install salesforce-lavis accelerate bitsandbytes
-
-if [[ ! -d "$SOURCE/.git" ]]; then
-  git clone --depth 1 https://github.com/dgrauet/Hunyuan3D-2.1-mlx.git "$SOURCE"
+if [[ ! -f "$AGENTIC_SOURCE/hy3dpaint/mlx/hybrid_unet.py" ]]; then
+  echo "La fuente AgenticVibes Paint no está incluida. Reinstala Xreality Convert desde el DMG."
+  exit 1
 fi
 
+if ! PYTHONPATH="$AGENTIC_RASTERIZER" python - <<'PY'
+import torch
+import custom_rasterizer_kernel
+PY
+then
+  echo "🔨 Compilando rasterizador AgenticVibes para este Python/Apple Silicon..."
+  (
+    cd "$AGENTIC_RASTERIZER"
+    MAX_JOBS=4 python setup.py build_ext --inplace
+  )
+fi
+
+echo "🔎 Validando contrato MLX secuencial..."
+PYTHONPATH="$SOURCE:$SOURCE/hy3dpaint" python - <<'PY'
+import inspect
+from hy3dshape.hy3dshape.pipeline_mlx import ShapePipeline
+
+constructor = inspect.signature(ShapePipeline.__init__).parameters
+loader = inspect.signature(ShapePipeline.from_pretrained).parameters
+if "dit_loader" not in constructor or "vae_loader" not in constructor:
+    raise RuntimeError("La fuente Shape no libera modelos entre etapas")
+if "torch_dtype" in loader:
+    raise RuntimeError("Contrato Shape MLX incompatible")
+PY
+
+echo "🔎 Validando Paint AgenticVibes sin UNet PyTorch duplicado..."
+PYTHONPATH="$AGENTIC_SOURCE:$AGENTIC_RASTERIZER" python - <<'PY'
+from pathlib import Path
+
+source = Path(__import__("hy3dpaint.mlx.hybrid_unet", fromlist=["__file__"]).__file__)
+text = source.read_text(encoding="utf-8")
+if "_MLXUNetProxy" not in text or "duplicate Torch UNet released" not in text:
+    raise RuntimeError("AgenticVibes no libera el UNet PyTorch duplicado")
+PY
+
+echo "$SOURCE_REVISION" > "$SOURCE_MARKER"
 echo "$INSTALL_VERSION" > "$MARKER"
 echo ""
 echo "============================================"
-echo "✅ Motor ULTRA instalado exitosamente"
+echo "✅ Motor local instalado exitosamente"
 echo "============================================"
 echo ""
-echo "🎯 OPTIMIZACIONES PARA M5 PRO:"
+echo "🎯 RUNTIME MAC:"
 echo "   ✓ MLX con aceleración Metal nativa"
-echo "   ✓ Memory pooling inteligente"
-echo "   ✓ Precisión mixta FP16/BF16"
-echo "   ✓ Metal Performance Shaders"
-echo "   ✓ UV Unwrapping profesional (xatlas)"
-echo "   ✓ Texturizado PBR completo"
-echo "   ✓ Super-resolución RealESRGAN"
-echo "   ✓ Multi-vista AI generativa"
+echo "   ✓ Dependencias y fuente fijadas"
+echo "   ✓ Shape y Paint aislados en memoria unificada"
+echo "   ✓ Texturizado Hunyuan Paint de seis vistas"
+echo "   ✓ AgenticVibes MLX con UNet PyTorch duplicado liberado"
+echo "   ✓ Buffalo Strategic MLX: partes, preservación y gates transaccionales"
 echo ""
 echo "🚀 Los pesos se descargarán en la primera conversión."
 echo ""

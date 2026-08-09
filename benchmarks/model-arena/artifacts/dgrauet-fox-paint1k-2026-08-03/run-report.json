@@ -1,0 +1,51 @@
+{
+  "audit": {
+    "embedded_base_color": true,
+    "embedded_images": 2,
+    "embedded_metallic_roughness": true,
+    "images": 2,
+    "material_prior_applied": true,
+    "material_profile": "animal",
+    "materials": 1,
+    "metallic_range": [
+      0.0,
+      0.02
+    ],
+    "mlx_peak_memory_mb": 15168.8,
+    "paint_profile": {
+      "resolution": 512,
+      "steps": 15,
+      "super_res": false,
+      "texture_size": 1024,
+      "views": 6
+    },
+    "passed": true,
+    "reasons": [],
+    "reference_anchored": false,
+    "reference_conditioning": "native_reference_attention",
+    "roughness_range": [
+      0.62,
+      0.95
+    ],
+    "texture_seed": 42,
+    "textured_primitives": 1,
+    "textures": 2,
+    "uv_mapped_primitives": 1
+  },
+  "category": "animal",
+  "elapsed_seconds": 180.032,
+  "glb": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/dgrauet-fox-paint1k-2026-08-03/dgrauet-hunyuan-paint.glb",
+  "glb_bytes": 2819956,
+  "glb_sha256": "f6e55e1339668eb1cd3ecdb1a372b57a757bc9be31e9eb2bd81fc26e4e4e012c",
+  "image": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/engine/Hunyuan3D-2.1-mlx/hy3dpaint/assets/case_1/image.png",
+  "material_profile": "animal",
+  "mesh": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/engine/Hunyuan3D-2.1-mlx/hy3dpaint/assets/case_1/mesh.glb",
+  "mlx_active_gb": 0.0,
+  "mlx_peak_gb": 15.906,
+  "model": "dgrauet/hunyuan3d-2.1-mlx",
+  "process_max_rss_gb": 2.51,
+  "profile": "1K",
+  "seed": 42,
+  "status": "pass",
+  "swap_delta_bytes": 0
+}

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "decision": "reject",
+  "scope": "four_step_smoke_only",
+  "strengths": [
+    "recognizable global mechanical silhouette",
+    "base-color family preserved across three neutral views",
+    "embedded 1K base-color and metallic-roughness textures render correctly"
+  ],
+  "failures": [
+    "many detached and floating fragments around lateral details",
+    "large transparency holes and broken thin structures",
+    "fine gear and glass details are substantially degraded",
+    "34082 disconnected face components in the final GLB"
+  ],
+  "renders": [
+    "renders/blender-front.png",
+    "renders/blender-quarter-left.png",
+    "renders/blender-quarter-right.png"
+  ]
+}

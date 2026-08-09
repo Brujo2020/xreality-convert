@@ -1,0 +1,23 @@
+{
+  "bakeSeconds": 3.976,
+  "diffusionSeconds": 178.673,
+  "elapsedSeconds": 183.939,
+  "glb": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/agenticvibes-dino-release-smoke-2026-08-03/agenticvibes-paint.glb",
+  "glbBytes": 2824444,
+  "glbSha256": "6310984ce5db3d7f554eace9f8f157effa2af29631b225274ff0706808ab5305",
+  "mlxActiveGb": 4.077,
+  "mlxPeakGb": 13.376,
+  "model": "AgenticVibes/hunyuan3d-2.1-mlx",
+  "modelRevision": "06ff58f0778649cbfc18f393925373782c6a705b",
+  "mpsCurrentGb": 0.996,
+  "mpsDriverGb": 22.309,
+  "optimization": "release_duplicate_pytorch_unet",
+  "processMaxRssGb": 12.21,
+  "seed": 42,
+  "sourceRevision": "3d8e93106f4b91cfb3b24ffc311a3b432b091a86",
+  "status": "pass",
+  "steps": 1,
+  "swapDeltaMb": 13546.81,
+  "textureSize": 1024,
+  "viewSize": 512
+}

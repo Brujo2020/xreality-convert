@@ -1,0 +1,24 @@
+{
+  "glb": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/dgrauet-latest-fox-paint4k-2026-08-03/dgrauet-hunyuan-paint.glb",
+  "glbSha256": "b4a47b163ca21bb277f1acc622a8af23f1bc492db4b7089b7b889f03e5a1e422",
+  "hdriInvoked": false,
+  "lighting": "embedded_base_color_only",
+  "projectionReport": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/dgrauet-latest-fox-paint4k-2026-08-03/evidence/native-paint-report.json",
+  "projectionReportSha256": "f469ce2e8f9fe4c5e81400e55ede209f1c600de5a19e6dfd8d1dc8d84801a779",
+  "renderer": "5.1.2",
+  "renders": [
+    {
+      "path": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/dgrauet-latest-fox-paint4k-2026-08-03/renders/blender-front.png",
+      "sha256": "560be844ee5dc8793f25a2180fc6fdb32636faee5f0dd34bffec65df4d18a28a"
+    },
+    {
+      "path": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/dgrauet-latest-fox-paint4k-2026-08-03/renders/blender-quarter-left.png",
+      "sha256": "161572fcb3bf03bdf05a4b3bcdf50532a51a8c32a6da8c6cf149c25ab03f6f6a"
+    },
+    {
+      "path": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/dgrauet-latest-fox-paint4k-2026-08-03/renders/blender-quarter-right.png",
+      "sha256": "286744b1632bfb1a9c3b794fbec62c8d223a054d3f99df9f20d4623705f2e7b0"
+    }
+  ],
+  "schemaVersion": 1
+}

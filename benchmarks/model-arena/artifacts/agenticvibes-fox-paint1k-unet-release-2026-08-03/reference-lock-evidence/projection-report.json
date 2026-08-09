@@ -1,0 +1,81 @@
+{
+  "artifacts": {
+    "confidence": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/agenticvibes-fox-paint1k-unet-release-2026-08-03/reference-lock-evidence/projection-confidence.png",
+    "difference": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/agenticvibes-fox-paint1k-unet-release-2026-08-03/reference-lock-evidence/difference-heatmap.png",
+    "front": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/agenticvibes-fox-paint1k-unet-release-2026-08-03/reference-lock-evidence/matched-front.png",
+    "left": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/agenticvibes-fox-paint1k-unet-release-2026-08-03/reference-lock-evidence/quarter-left.png",
+    "right": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/agenticvibes-fox-paint1k-unet-release-2026-08-03/reference-lock-evidence/quarter-right.png",
+    "sheet": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/agenticvibes-fox-paint1k-unet-release-2026-08-03/reference-lock-evidence/fidelity-evidence-sheet.png"
+  },
+  "calibration": {
+    "cameraDirection": [
+      -0.172,
+      -0.1392,
+      0.9752
+    ],
+    "elevationDegrees": -8.0,
+    "offsetX": 510.1660427745546,
+    "offsetY": 514.9416861381706,
+    "referenceSize": [
+      1024,
+      1024
+    ],
+    "scalePixelsPerUnit": 445.60826046234797,
+    "silhouetteIoU": 0.7936,
+    "yawDegrees": 350.0
+  },
+  "componentFaceRatio": 0.9525,
+  "gate": {
+    "decision": "pass",
+    "gateVersion": "xreality-aligned-fidelity-v2",
+    "metrics": {
+      "adjacentEdges": 57147,
+      "colorSimilarity": 0.9467,
+      "localizedErrorRatio": 0.0463,
+      "meanSeamError": 0.0165,
+      "p95ColorError": 0.1922,
+      "p95SeamError": 0.0683,
+      "referenceCoverage": 0.9045,
+      "severeSeamRatio": 0.015,
+      "silhouetteIoU": 0.7898,
+      "whiteLeakageRatio": 0.0001
+    },
+    "passed": true,
+    "reasons": [],
+    "thresholds": {
+      "localizedErrorThreshold": 0.2,
+      "maximumLocalizedErrorRatio": 0.05,
+      "maximumSevereSeamRatio": 0.03,
+      "maximumWhiteLeakageRatio": 0.02,
+      "minimumColorSimilarity": 0.85,
+      "minimumSilhouetteIoU": 0.75,
+      "severeSeamThreshold": 0.2
+    }
+  },
+  "inputGlb": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/agenticvibes-fox-paint1k-unet-release-2026-08-03/agenticvibes-paint.glb",
+  "inputGlbSha256": "7167c946f94594ae70dffcf47025fec68c70333852034323fb3117a8c5ef9476",
+  "outputGlb": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/agenticvibes-fox-paint1k-unet-release-2026-08-03/agenticvibes-reference-locked.glb",
+  "outputGlbSha256": "d133662131bf712ee3485c631ac62d818c41a60621f7a1170cdf0aa59d5967d2",
+  "paintInvoked": false,
+  "projection": {
+    "frontFacingFaces": 19209,
+    "grazingRejectedFaceRatio": 0.0374,
+    "grazingRejectedFaces": 718,
+    "highConfidenceTexelRatio": 0.1539,
+    "minimumFacingCosine": 0.05,
+    "projectedTexelRatio": 0.1913,
+    "seamBoundaryPropagationTexels": 60433,
+    "seams": {
+      "adjacentEdges": 57147,
+      "meanSeamError": 0.0165,
+      "p95SeamError": 0.0683,
+      "severeSeamRatio": 0.015
+    },
+    "syntheticCompletionApplied": false
+  },
+  "projectionMode": "camera_calibrated_zbuffer_uv",
+  "projectionVersion": "xreality-reference-projection-v3",
+  "reference": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/engine/Hunyuan3D-2.1-mlx/hy3dpaint/assets/case_1/image.png",
+  "referenceSha256": "3e29da7245fddb6ac4a571a6243c2e6256ccb753b094b7facdcbbcb018358c66",
+  "schemaVersion": 1
+}

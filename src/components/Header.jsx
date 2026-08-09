@@ -1,36 +1,70 @@
 import React from 'react';
+import { ClockCounterClockwise, Cpu } from '@phosphor-icons/react';
 
-export default function Header({ status, onRefresh }) {
-  const { connected, checking } = status;
-  const state = checking ? 'Conectando' : connected ? 'Sistema listo' : 'Reconectando';
-  const dot = checking ? 'bg-amber-400' : connected ? 'bg-cyan-400' : 'bg-rose-400';
+const MODE_LABELS = {
+  image: 'Imagen',
+  stl: 'Texto → malla',
+  image3d: 'Imagen → activo 3D',
+};
+
+export default function Header({
+  status,
+  hunyuanUp,
+  mode,
+  processing,
+  progress,
+  historyCount,
+  historyOpen,
+  onToggleHistory,
+  onRefresh,
+}) {
+  const localReady = mode === 'image3d' ? hunyuanUp : status.connected;
+  const state = processing ? 'Procesando' : localReady ? 'Listo' : 'Preparando';
+  const tone = processing ? 'working' : localReady ? 'ready' : 'standby';
+  const dot = processing ? 'bg-amber-300 text-amber-300' : localReady ? 'bg-emerald-300 text-emerald-300' : 'bg-sky-300 text-sky-300';
+  const detail = processing
+    ? progress?.label || 'Pipeline local activo'
+    : localReady
+    ? mode === 'image3d' ? 'Buffalo MLX · Shape · Paint · PBR' : 'Servicios locales disponibles'
+    : mode === 'image3d' ? 'Preparando motor MLX' : 'Comprobando servicios locales';
 
   return (
-    <header className="relative z-20 flex h-16 shrink-0 items-center justify-between border-b border-sky-200/10 bg-[#061429]/75 pl-20 pr-5 shadow-[0_12px_40px_rgba(0,5,20,0.25)] backdrop-blur-2xl select-none">
-      <div className="flex items-center gap-3">
-        <div className="relative grid h-9 w-9 place-items-center overflow-hidden rounded-xl border border-sky-300/20 bg-gradient-to-br from-blue-500/30 to-cyan-300/10 shadow-[0_0_25px_rgba(22,137,232,0.2)]">
+    <header className="app-header header-glass relative z-20 flex h-[60px] shrink-0 items-center justify-between border-b pl-8 pr-4 select-none">
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="brand-mark relative grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-xl border border-sky-300/20 bg-gradient-to-br from-blue-500/30 to-cyan-300/10 shadow-[0_0_25px_rgba(22,137,232,0.2)]">
           <span className="text-sm font-bold tracking-tighter text-sky-100">XR</span>
           <span className="absolute inset-x-1 bottom-0 h-px bg-gradient-to-r from-transparent via-cyan-300 to-transparent" />
         </div>
-        <div>
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-[15px] font-semibold tracking-tight text-white">Xreality Convert</span>
-            <span className="rounded-md border border-sky-300/10 bg-sky-300/5 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.16em] text-sky-300">Spatial asset lab</span>
+            <span className="truncate text-[15px] font-semibold tracking-tight text-white">Xreality Convert</span>
+            <span className="hidden rounded-md border border-sky-300/10 bg-sky-300/5 px-1.5 py-0.5 font-mono text-[8px] uppercase tracking-[0.16em] text-sky-300 sm:inline">MLX local</span>
           </div>
-          <p className="mt-0.5 text-[10px] text-slate-500">Imagen, geometría y optimización XR en un flujo local</p>
+          <p className="mt-0.5 truncate text-[10px] text-slate-500">{MODE_LABELS[mode]} · producción privada en este Mac</p>
         </div>
       </div>
 
-      <button onClick={onRefresh} title="Comprobar servicios" className="flex items-center gap-3 rounded-xl border border-sky-200/10 bg-white/[0.035] px-3 py-2 transition hover:border-sky-300/25 hover:bg-white/[0.06]">
-        <span className="relative flex h-2.5 w-2.5">
-          <span className={`absolute inline-flex h-full w-full rounded-full opacity-50 ${dot} ${checking ? 'animate-ping' : ''}`} />
-          <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${dot} ${connected ? 'shadow-[0_0_12px_#52d7ff]' : ''}`} />
-        </span>
-        <span className="text-left">
-          <span className="block text-[10px] font-medium text-slate-200">{state}</span>
-          <span className="block font-mono text-[8px] uppercase tracking-wider text-slate-500">Ollama · MLX local</span>
-        </span>
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={onToggleHistory}
+          aria-pressed={historyOpen}
+          className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-[10px] transition ${historyOpen ? 'border-sky-300/30 bg-sky-300/10 text-sky-100' : 'border-sky-200/10 bg-white/[0.03] text-slate-400 hover:border-sky-300/25 hover:text-white'}`}
+        >
+          <ClockCounterClockwise size={14} weight="duotone" aria-hidden="true" />
+          Historial <span className="font-mono text-[9px] text-sky-300">{historyCount}</span>
+        </button>
+        <button onClick={onRefresh} title="Comprobar servicios locales" className={`status-control status-control-${tone} flex items-center gap-2.5 rounded-xl px-3 py-2 transition`}>
+          <Cpu size={17} weight="duotone" className={processing ? 'text-amber-200' : localReady ? 'text-emerald-200' : 'text-sky-200'} aria-hidden="true" />
+          <span className="relative flex h-2.5 w-2.5">
+            <span className={`absolute inline-flex h-full w-full rounded-full opacity-50 ${dot} ${processing ? 'animate-ping' : ''}`} />
+            <span className={`state-dot relative inline-flex h-2.5 w-2.5 rounded-full ${dot}`} />
+          </span>
+          <span className="min-w-0 text-left">
+            <span className="block text-[10px] font-medium text-slate-200">{state}</span>
+            <span className="hidden max-w-[165px] truncate font-mono text-[8px] uppercase tracking-wider text-slate-400 md:block">{detail}</span>
+          </span>
+        </button>
+      </div>
     </header>
   );
 }

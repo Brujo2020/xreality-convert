@@ -3,6 +3,18 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    --xr-ink: #020916;
+    --xr-panel: rgba(6, 22, 43, 0.76);
+    --xr-panel-strong: rgba(8, 28, 52, 0.88);
+    --xr-line: rgba(151, 221, 255, 0.14);
+    --xr-line-bright: rgba(151, 221, 255, 0.26);
+    --xr-cyan: #64dcff;
+    --xr-mint: #73edc2;
+    --xr-amber: #ffd166;
+    --xr-coral: #ff9b9b;
+  }
+
   html,
   body,
   #root {
@@ -13,7 +25,7 @@
     margin: 0;
     background-color: #020b1c;
     color: #e5e5e5;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Display", system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     overflow: hidden;
     background-image:
@@ -38,11 +50,169 @@
 }
 
 @layer components {
+  .app-shell {
+    isolation: isolate;
+    background-image:
+      radial-gradient(circle at 48% -15%, rgba(41, 145, 255, 0.18), transparent 42%),
+      radial-gradient(circle at 92% 92%, rgba(34, 211, 238, 0.08), transparent 30%),
+      linear-gradient(145deg, #020916 0%, #031126 48%, #020a18 100%);
+  }
+
+  .app-shell::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.46;
+    background-image:
+      linear-gradient(rgba(82, 215, 255, 0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(82, 215, 255, 0.025) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: linear-gradient(to bottom, black, transparent 86%);
+  }
+
   .glass-card {
-    border: 1px solid rgba(125, 211, 252, 0.10);
-    background: linear-gradient(145deg, rgba(15, 42, 72, 0.72), rgba(5, 18, 38, 0.64));
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 18px 45px rgba(0, 5, 18, 0.22);
-    backdrop-filter: blur(18px) saturate(125%);
+    border: 1px solid var(--xr-line);
+    background: rgba(8, 29, 54, 0.68);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055), inset 0 -1px 0 rgba(2, 10, 24, 0.45), 0 18px 45px rgba(0, 5, 18, 0.24);
+    -webkit-backdrop-filter: blur(22px) saturate(145%);
+    backdrop-filter: blur(22px) saturate(145%);
+  }
+
+  .workspace-window {
+    border: 1px solid var(--xr-line);
+    background: rgba(4, 17, 35, 0.72);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045), 0 28px 80px rgba(0, 4, 18, 0.38);
+    -webkit-backdrop-filter: blur(26px) saturate(140%);
+    backdrop-filter: blur(26px) saturate(140%);
+  }
+
+  .header-glass {
+    border-color: rgba(151, 221, 255, 0.13);
+    background: rgba(4, 19, 39, 0.78);
+    box-shadow: inset 0 -1px 0 rgba(151, 221, 255, 0.035), 0 14px 42px rgba(0, 5, 20, 0.28);
+    -webkit-backdrop-filter: blur(28px) saturate(150%);
+    backdrop-filter: blur(28px) saturate(150%);
+  }
+
+  .status-control {
+    min-width: 178px;
+    border: 1px solid var(--xr-line);
+    background: rgba(10, 29, 52, 0.62);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055), 0 10px 28px rgba(0, 5, 18, 0.2);
+    -webkit-backdrop-filter: blur(18px) saturate(145%);
+    backdrop-filter: blur(18px) saturate(145%);
+  }
+
+  .status-control:hover {
+    border-color: var(--xr-line-bright);
+    background: rgba(13, 37, 65, 0.76);
+  }
+
+  .status-control-ready { border-color: rgba(115, 237, 194, 0.2); }
+  .status-control-working { border-color: rgba(255, 209, 102, 0.24); }
+
+  .state-dot {
+    box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.025), 0 0 18px currentColor;
+  }
+
+  .engine-status {
+    border: 1px solid var(--xr-line);
+    background: rgba(3, 14, 29, 0.48);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    -webkit-backdrop-filter: blur(18px) saturate(135%);
+    backdrop-filter: blur(18px) saturate(135%);
+  }
+
+  .engine-status-ready {
+    border-color: rgba(115, 237, 194, 0.25);
+    background: rgba(14, 71, 64, 0.18);
+  }
+
+  .engine-status-working {
+    border-color: rgba(255, 209, 102, 0.25);
+    background: rgba(89, 60, 13, 0.18);
+  }
+
+  .analysis-card {
+    border: 1px solid rgba(151, 221, 255, 0.1);
+    background: rgba(2, 13, 29, 0.44);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
+  }
+
+  .loading-card {
+    border: 1px solid rgba(100, 220, 255, 0.19);
+    background: rgba(7, 25, 48, 0.84);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.075), inset 0 -1px 0 rgba(0, 6, 17, 0.58), 0 32px 100px rgba(0, 4, 18, 0.48);
+    -webkit-backdrop-filter: blur(28px) saturate(150%);
+    backdrop-filter: blur(28px) saturate(150%);
+  }
+
+  .loading-card-compact {
+    background: rgba(8, 31, 58, 0.76);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 18px 42px rgba(0, 5, 18, 0.28);
+  }
+
+  .loading-percent {
+    border: 1px solid rgba(100, 220, 255, 0.17);
+    background: rgba(3, 14, 30, 0.56);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  }
+
+  .progress-track {
+    overflow: hidden;
+    border: 1px solid rgba(151, 221, 255, 0.1);
+    background: rgba(1, 8, 20, 0.82);
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.36);
+  }
+
+  .progress-fill {
+    background: #29a8ed;
+    box-shadow: 0 0 18px rgba(82, 215, 255, 0.4);
+  }
+
+  .stage-segment {
+    background: rgba(70, 94, 123, 0.28);
+  }
+
+  .stage-segment-current {
+    background: var(--xr-amber);
+    box-shadow: 0 0 14px rgba(255, 209, 102, 0.4);
+  }
+
+  .stage-segment-complete {
+    background: var(--xr-mint);
+    box-shadow: 0 0 12px rgba(115, 237, 194, 0.34);
+  }
+
+  .notice-card {
+    border: 1px solid var(--xr-line);
+    background: rgba(9, 26, 50, 0.84);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 28px 80px rgba(0, 4, 18, 0.4);
+    -webkit-backdrop-filter: blur(26px) saturate(145%);
+    backdrop-filter: blur(26px) saturate(145%);
+  }
+
+  .notice-error {
+    border-color: rgba(255, 155, 155, 0.25);
+    background: rgba(52, 23, 40, 0.54);
+  }
+
+  .notice-icon {
+    border: 1px solid rgba(255, 155, 155, 0.28);
+    background: rgba(255, 155, 155, 0.1);
+    box-shadow: 0 0 24px rgba(255, 155, 155, 0.11);
+  }
+
+  .hud-glass {
+    border: 1px solid rgba(185, 229, 255, 0.15);
+    background: rgba(2, 12, 27, 0.7);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055), 0 16px 40px rgba(0, 4, 18, 0.32);
+    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    backdrop-filter: blur(20px) saturate(150%);
   }
 
   .field-modern {
@@ -63,6 +233,45 @@
     background: rgba(3, 17, 40, 0.76);
     box-shadow: 0 0 0 3px rgba(22, 137, 232, 0.07), inset 0 1px 8px rgba(0, 0, 0, 0.2);
     outline: none;
+  }
+
+  .result-stage {
+    position: relative;
+  }
+
+  .result-stage::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  }
+
+  .asset-canvas {
+    background-image:
+      radial-gradient(circle at 50% 42%, rgba(21, 79, 132, 0.24), transparent 44%),
+      linear-gradient(180deg, #041329 0%, #020917 100%);
+  }
+
+  .processing-halo {
+    background: radial-gradient(circle, rgba(22, 137, 232, 0.16), transparent 66%);
+    filter: blur(8px);
+    animation: ambient-drift 5s ease-in-out infinite alternate;
+  }
+
+  .progress-beam {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .progress-beam::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.72), transparent);
+    animation: progress-scan 1.9s ease-in-out infinite;
   }
 }
 
@@ -107,6 +316,39 @@
   .slider-accent::-webkit-slider-thumb:hover {
     background: #35a7ff;
   }
+}
+
+@keyframes ambient-drift {
+  from { transform: scale(0.94); opacity: 0.62; }
+  to { transform: scale(1.06); opacity: 1; }
+}
+
+@keyframes progress-scan {
+  to { transform: translateX(100%); }
+}
+
+@media (max-width: 1180px) {
+  .history-rail {
+    position: absolute;
+    inset-block: 0.75rem;
+    right: 0.75rem;
+    z-index: 30;
+    width: 230px !important;
+  }
+}
+
+@media (max-width: 1060px) {
+  .control-rail { width: 330px !important; }
+}
+
+@media (max-width: 940px) {
+  .control-rail { width: 305px !important; }
+  .workspace-grid { gap: 0.5rem; padding: 0.5rem; }
+  .asset-dock { padding: 0.65rem; }
+}
+
+@media (max-height: 680px) {
+  .app-header { height: 54px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

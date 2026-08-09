@@ -1,7 +1,40 @@
 import React, { useState } from 'react';
+import {
+  ArrowRight,
+  Armchair,
+  Boat,
+  Buildings,
+  Bus,
+  Car,
+  Crane,
+  Cube,
+  CubeFocus,
+  Drone,
+  Engine,
+  Factory,
+  Image,
+  Package,
+  PawPrint,
+  Person,
+  Plus,
+  Polygon,
+  Scan,
+  SlidersHorizontal,
+  Sparkle,
+  SpinnerGap,
+  Lightning,
+  Motorcycle,
+  SolarPanel,
+  Tractor,
+  Tree,
+  Truck,
+  Warehouse,
+  Wrench,
+} from '@phosphor-icons/react';
 import XrProductionPanel from './XrProductionPanel.jsx';
 import UseCasePicker from './UseCasePicker.jsx';
 import { MODEL_CATEGORIES } from '../lib/modelCategories.js';
+import { XR_PROFILES } from '../lib/xrProfiles.js';
 
 function Slider({ label, value, min, max, step, onChange, suffix = '' }) {
   return (
@@ -18,10 +51,37 @@ function Slider({ label, value, min, max, step, onChange, suffix = '' }) {
 }
 
 const MODES = [
-  { id: 'image', step: '01', label: 'Crear imagen', hint: 'Referencia visual' },
-  { id: 'stl', step: '02', label: 'Texto → 3D', hint: 'Geometría técnica' },
-  { id: 'image3d', step: '03', label: 'Imagen → 3D', hint: 'Reconstrucción MLX' },
+  { id: 'image', step: '01', label: 'Crear imagen', hint: 'Referencia visual', Icon: Image },
+  { id: 'stl', step: '02', label: 'Texto → 3D', hint: 'Geometría técnica', Icon: Polygon },
+  { id: 'image3d', step: '03', label: 'Imagen → 3D', hint: 'Reconstrucción MLX', Icon: CubeFocus },
 ];
+
+const CATEGORY_ICONS = {
+  animal: PawPrint,
+  person: Person,
+  product: Package,
+  industrial: Factory,
+  construction: Buildings,
+  warehouse: Warehouse,
+  vehicle: Car,
+  cargo_vehicle: Truck,
+  truck: Truck,
+  crane: Crane,
+  electrical: Lightning,
+  vegetation: Tree,
+  building: Buildings,
+  tool: Wrench,
+  forklift: Tractor,
+  excavator: Tractor,
+  motorcycle: Motorcycle,
+  bus: Bus,
+  drone: Drone,
+  boat: Boat,
+  furniture: Armchair,
+  solar: SolarPanel,
+  architecture: Buildings,
+  custom: Cube,
+};
 
 function ModeSelector({ mode, setMode, disabled }) {
   return (
@@ -37,7 +97,10 @@ function ModeSelector({ mode, setMode, disabled }) {
               : 'text-slate-400 hover:bg-white/5 hover:text-slate-100'
           }`}
         >
-          <span className={`block font-mono text-[9px] ${mode === item.id ? 'text-white/65' : 'text-sky-500/60'}`}>{item.step}</span>
+          <span className="flex items-center justify-between gap-2">
+            <span className={`font-mono text-[9px] ${mode === item.id ? 'text-white/65' : 'text-sky-500/60'}`}>{item.step}</span>
+            <item.Icon size={16} weight="duotone" className={mode === item.id ? 'text-white' : 'text-sky-400/70'} aria-hidden="true" />
+          </span>
           <span className="mt-0.5 block text-[11px] font-semibold leading-tight">{item.label}</span>
         </button>
       ))}
@@ -64,7 +127,7 @@ function CategorySelector({ value, onChange, disabled }) {
       <div className="grid grid-cols-3 gap-1.5">
         {Object.entries(MODEL_CATEGORIES).map(([id, item]) => (
           <button key={id} disabled={disabled} onClick={() => onChange(id)} className={`rounded-xl border px-2 py-2.5 text-center transition ${value === id ? 'border-cyan-300/40 bg-cyan-300/10 text-white shadow-[0_8px_20px_rgba(22,137,232,0.14)]' : 'border-white/5 bg-black/10 text-slate-500 hover:border-sky-300/20 hover:text-slate-200'}`}>
-            <span className="block text-sm text-sky-300">{item.icon}</span>
+            {React.createElement(CATEGORY_ICONS[id] || Cube, { size: 20, weight: 'duotone', className: 'mx-auto text-sky-300', 'aria-hidden': true })}
             <span className="mt-1 block text-[9px] font-semibold">{item.label}</span>
           </button>
         ))}
@@ -79,6 +142,57 @@ function CategorySelector({ value, onChange, disabled }) {
   );
 }
 
+const QUICK_DELIVERY_PROFILES = [
+  ['lowpoly', 'Low Poly', '15K · PBR 1K'],
+  ['vrready', 'VR Ready', '45K · PBR 1K'],
+  ['smart', 'Smart M', 'Memoria adaptativa'],
+];
+
+function QuickDeliverySelector({ asset, setAsset, setSteps3d, disabled }) {
+  const selectProfile = (id) => {
+    const profile = XR_PROFILES[id];
+    setAsset((current) => ({
+      ...current,
+      profile: id,
+      octree: profile.octree,
+      texture: profile.texture,
+      targetFaces: profile.targetFaces,
+      textureSize: profile.textureSize,
+      paintBackend: profile.paintBackend,
+    }));
+    setSteps3d(profile.steps);
+  };
+
+  return (
+    <section className="glass-card rounded-2xl border-cyan-300/15 p-3 shadow-[0_12px_35px_rgba(1,10,30,0.32)]">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div>
+          <p className="font-mono text-[8px] uppercase tracking-[0.18em] text-cyan-300/70">Salida rápida</p>
+          <p className="mt-0.5 text-[11px] font-semibold text-white">Elige la optimización</p>
+        </div>
+        <span className="rounded-md border border-cyan-300/15 bg-cyan-300/5 px-2 py-1 font-mono text-[8px] uppercase text-cyan-200">{asset.profile}</span>
+      </div>
+      <div className="grid grid-cols-3 gap-1.5">
+        {QUICK_DELIVERY_PROFILES.map(([id, label, hint]) => (
+          <button
+            key={id}
+            type="button"
+            data-profile-id={id}
+            aria-pressed={asset.profile === id}
+            disabled={disabled}
+            onClick={() => selectProfile(id)}
+            className={`rounded-xl border px-2 py-2 text-left transition ${asset.profile === id ? 'border-cyan-300/45 bg-cyan-300/12 text-white' : 'border-white/[0.06] bg-black/15 text-slate-400 hover:border-cyan-300/25 hover:text-white'} disabled:cursor-not-allowed disabled:opacity-40`}
+          >
+            <span className="block text-[9px] font-semibold">{label}</span>
+            <span className="mt-0.5 block text-[7px] leading-tight text-slate-500">{hint}</span>
+          </button>
+        ))}
+      </div>
+      {disabled && <p className="mt-2 text-[8px] leading-relaxed text-amber-200/75">Hay un proceso activo. Cancélalo para cambiar el perfil de salida.</p>}
+    </section>
+  );
+}
+
 export default function PromptPanel(props) {
   const {
     connected, useCase, onSelectUseCase, modelCategory, onSelectModelCategory, mode, setMode, imageModel, imageModels, setImageModel,
@@ -89,6 +203,7 @@ export default function PromptPanel(props) {
     onGenerate, onCancel, randomSeed,
   } = props;
   const [advanced, setAdvanced] = useState(false);
+  const [showAnalysis, setShowAnalysis] = useState(false);
   const [imageInfo, setImageInfo] = useState(null);
   const update = (key, value) => setParams((current) => ({ ...current, [key]: value }));
   const processing = generating || installingEngine || installingModel;
@@ -117,6 +232,12 @@ export default function PromptPanel(props) {
 
       <UseCasePicker value={useCase} onChange={onSelectUseCase} disabled={processing} />
 
+      {(mode === 'image3d' || mode === 'stl') && (
+        <div className="sticky top-0 z-20 rounded-2xl bg-[#031027]/95 py-1 backdrop-blur-xl">
+          <QuickDeliverySelector asset={asset} setAsset={setAsset} setSteps3d={setSteps3d} disabled={processing} />
+        </div>
+      )}
+
       <Section eyebrow="Fuente" title={mode === 'image3d' ? 'Motor de reconstrucción' : mode === 'image' ? 'Modelo generativo' : 'Modelo de geometría'}>
         {mode === 'image' && (
           <>
@@ -134,15 +255,17 @@ export default function PromptPanel(props) {
           </select>
         )}
         {mode === 'image3d' && (
-          <div className={`rounded-xl border p-3 ${hunyuanUp ? 'border-cyan-400/20 bg-cyan-400/5' : 'border-amber-400/20 bg-amber-400/5'}`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className={`h-2.5 w-2.5 rounded-full ${hunyuanUp ? 'bg-cyan-400 shadow-[0_0_14px_#52d7ff]' : 'bg-amber-400'}`} />
-                <span className="text-xs font-medium text-slate-100">Hunyuan3D · Apple MLX</span>
+          <div className={`engine-status rounded-xl p-3 ${hunyuanUp ? 'engine-status-ready' : installingEngine ? 'engine-status-working' : ''}`}>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <Engine size={17} weight="duotone" className={`shrink-0 ${hunyuanUp ? 'text-emerald-200' : installingEngine ? 'text-amber-200' : 'text-sky-200'}`} aria-hidden="true" />
+                <span className={`state-dot h-2 w-2 shrink-0 rounded-full ${hunyuanUp ? 'bg-emerald-300 text-emerald-300' : installingEngine ? 'bg-amber-300 text-amber-300 animate-pulse' : 'bg-sky-300 text-sky-300'}`} />
+                <span className="truncate text-[11px] font-medium text-slate-100">Hunyuan3D · Apple MLX</span>
               </div>
-              <span className="font-mono text-[9px] uppercase tracking-wider text-slate-400">{hunyuanUp ? 'Disponible' : 'Preparando'}</span>
+              <span className={`shrink-0 font-mono text-[8px] uppercase tracking-wider ${hunyuanUp ? 'text-emerald-200' : installingEngine ? 'text-amber-200' : 'text-sky-200'}`}>{hunyuanUp ? 'Disponible' : installingEngine ? 'Inicializando' : 'Preparando'}</span>
             </div>
-            {!hunyuanUp && !installingEngine && <button onClick={onInstallEngine} className="mt-3 w-full rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-blue-900/30">Inicializar motor</button>}
+            <p className="mt-2 font-mono text-[8px] uppercase tracking-[0.13em] text-slate-500">{hunyuanUp ? 'Forma · textura · mapas PBR' : installingEngine ? 'Python · MLX · validación local' : 'Arranque privado en este Mac'}</p>
+            {!hunyuanUp && !installingEngine && <button onClick={onInstallEngine} className="mt-3 w-full rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-blue-900/30 transition hover:bg-accent-hover">Inicializar motor</button>}
           </div>
         )}
       </Section>
@@ -157,7 +280,7 @@ export default function PromptPanel(props) {
               </>
             ) : (
               <>
-                <span className="grid h-12 w-12 place-items-center rounded-full border border-sky-400/20 bg-sky-400/10 text-2xl text-sky-300 shadow-[0_0_30px_rgba(82,215,255,0.12)]">＋</span>
+                <span className="grid h-12 w-12 place-items-center rounded-full border border-sky-400/20 bg-sky-400/10 text-sky-200 shadow-[0_0_30px_rgba(82,215,255,0.12)]"><Plus size={24} weight="duotone" aria-hidden="true" /></span>
                 <span className="mt-3 text-xs font-semibold text-slate-200">Seleccionar o arrastrar imagen</span>
                 <span className="mt-1 text-[10px] text-slate-500">PNG · JPG · WEBP</span>
               </>
@@ -181,25 +304,23 @@ export default function PromptPanel(props) {
           </div>
         )}
         {mode === 'image3d' && (
-          <div className="mt-3 rounded-2xl border border-white/5 bg-black/15 p-3">
+          <div className="analysis-card mt-3 rounded-2xl p-3">
             <div className="flex items-center justify-between gap-2">
               <div>
-                <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-sky-400/70">Diagnóstico previo</p>
-                <p className="mt-1 text-[10px] text-slate-400">
-                  {analysisLoading ? 'Analizando la imagen…' : analysis?.status || 'Esperando una referencia'}
+                <p className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.18em] text-sky-400/70"><Scan size={14} weight="duotone" aria-hidden="true" />Diagnóstico previo</p>
+                <p className="mt-1 flex items-center gap-2 text-[10px] text-slate-400">
+                  {analysisLoading && <span className="state-dot h-1.5 w-1.5 rounded-full bg-amber-300 text-amber-300 animate-pulse" />}
+                  {analysisLoading ? 'Ojo de Águila analiza la referencia…' : analysis?.status || 'Esperando una referencia'}
                 </p>
               </div>
-              {analysis?.suggested_category && analysis?.suggested_category !== modelCategory && (
-                <button
-                  disabled={processing}
-                  onClick={() => onSelectModelCategory(analysis.suggested_category)}
-                  className="rounded-lg border border-cyan-300/20 bg-cyan-300/5 px-2.5 py-1.5 text-[9px] font-semibold text-cyan-100 transition hover:bg-cyan-300/10"
-                >
-                  Aplicar {MODEL_CATEGORIES[analysis.suggested_category]?.label || 'categoría sugerida'}
-                </button>
-              )}
+              {analysis && <button onClick={() => setShowAnalysis((open) => !open)} className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-[9px] text-slate-300 transition hover:border-sky-300/25">{showAnalysis ? 'Ocultar' : 'Revisar'}</button>}
             </div>
-            {analysis?.preview_base64 && image3dInput && (
+            {showAnalysis && analysis?.suggested_category && analysis?.suggested_category !== modelCategory && (
+              <button disabled={processing} onClick={() => onSelectModelCategory(analysis.suggested_category)} className="mt-3 w-full rounded-lg border border-cyan-300/20 bg-cyan-300/5 px-2.5 py-2 text-[9px] font-semibold text-cyan-100 transition hover:bg-cyan-300/10">
+                Aplicar categoría {MODEL_CATEGORIES[analysis.suggested_category]?.label || 'sugerida'}
+              </button>
+            )}
+            {showAnalysis && analysis?.preview_base64 && image3dInput && (
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <figure className="rounded-xl border border-white/5 bg-black/20 p-2">
                   <figcaption className="mb-2 font-mono text-[8px] uppercase tracking-[0.16em] text-slate-500">Original</figcaption>
@@ -211,7 +332,7 @@ export default function PromptPanel(props) {
                 </figure>
               </div>
             )}
-            {analysis && (
+            {showAnalysis && analysis && (
               <div className="mt-3 space-y-2">
                 <div className="flex flex-wrap gap-1.5">
                   <span className={`rounded-md border px-2 py-1 font-mono text-[8px] ${analysis.status === 'Óptima' ? 'border-cyan-300/15 bg-cyan-300/5 text-cyan-200' : analysis.status === 'Procesable con ajustes' ? 'border-amber-300/15 bg-amber-300/5 text-amber-200' : 'border-rose-300/15 bg-rose-300/5 text-rose-200'}`}>{analysis.status}</span>
@@ -263,14 +384,14 @@ export default function PromptPanel(props) {
 
       <section className="overflow-hidden rounded-2xl border border-white/5 bg-black/10">
         <button onClick={() => setAdvanced((current) => !current)} className="flex w-full items-center justify-between px-4 py-3 text-xs font-medium text-slate-300">
-          <span>Controles avanzados</span>
-          <span className={`text-sky-400 transition-transform ${advanced ? 'rotate-45' : ''}`}>＋</span>
+          <span className="flex items-center gap-2"><SlidersHorizontal size={16} weight="duotone" className="text-sky-300" aria-hidden="true" />Controles avanzados</span>
+          <Plus size={15} weight="duotone" className={`text-sky-400 transition-transform ${advanced ? 'rotate-45' : ''}`} aria-hidden="true" />
         </button>
         {advanced && (
           <div className="flex flex-col gap-4 border-t border-white/5 p-4">
             {mode === 'image' && (
               <>
-                <button onClick={() => setParams((current) => ({ ...current, width: 2048, height: 2048, steps: 20 }))} className="rounded-xl border border-sky-400/25 bg-sky-400/5 px-3 py-2.5 text-xs font-semibold text-sky-200 hover:bg-sky-400/10">◆ Aplicar máxima calidad</button>
+                <button onClick={() => setParams((current) => ({ ...current, width: 2048, height: 2048, steps: 20 }))} className="flex items-center justify-center gap-2 rounded-xl border border-sky-400/25 bg-sky-400/5 px-3 py-2.5 text-xs font-semibold text-sky-200 hover:bg-sky-400/10"><Sparkle size={16} weight="duotone" aria-hidden="true" />Aplicar máxima calidad</button>
                 <Slider label="Ancho" value={params.width} min={512} max={2048} step={64} suffix=" px" onChange={(value) => update('width', value)} />
                 <Slider label="Alto" value={params.height} min={512} max={2048} step={64} suffix=" px" onChange={(value) => update('height', value)} />
                 <Slider label="Pasos" value={params.steps} min={1} max={20} step={1} onChange={(value) => update('steps', value)} />
@@ -301,14 +422,15 @@ export default function PromptPanel(props) {
 
       <div className="mt-auto pt-1">
         {processing ? (
-          <div className="rounded-2xl border border-sky-400/20 bg-gradient-to-br from-sky-500/10 to-blue-900/10 p-4 shadow-xl shadow-blue-950/30">
-            <div className="mb-2 flex justify-between gap-3 text-xs"><span className="truncate text-sky-100">{progress.label}</span><strong className="font-mono text-white">{progress.percent}%</strong></div>
-            <div className="h-2 overflow-hidden rounded-full bg-slate-950"><div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-300 transition-all duration-700" style={{ width: `${progress.percent}%` }} /></div>
-            {generating && <button onClick={onCancel} className="mt-3 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300 hover:bg-white/10">Cancelar proceso</button>}
+          <div className="loading-card loading-card-compact rounded-2xl p-4">
+            <div className="mb-2 flex justify-between gap-3 text-xs"><span className="flex min-w-0 items-center gap-2 truncate text-sky-100"><SpinnerGap size={15} weight="bold" className="shrink-0 animate-spin text-amber-200" aria-hidden="true" />{progress.label}</span><strong className="font-mono text-white">{progress.percent}%</strong></div>
+            <div className="progress-track h-2 rounded-full"><div className="progress-fill progress-beam h-full rounded-full transition-all duration-700" style={{ width: `${progress.percent}%` }} /></div>
+            <p className="mt-2 font-mono text-[8px] uppercase tracking-[0.13em] text-slate-500">Pipeline local · memoria unificada</p>
+            {generating && <button onClick={onCancel} className="mt-3 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300 hover:bg-white/10">Cancelar y cambiar perfil</button>}
           </div>
         ) : (
           <button onClick={onGenerate} disabled={blocked} className="group relative w-full overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-sky-500 to-cyan-400 px-4 py-3.5 text-sm font-semibold text-white shadow-[0_15px_40px_rgba(22,137,232,0.28)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_50px_rgba(22,137,232,0.36)] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:translate-y-0">
-            <span className="relative z-10 flex items-center justify-center gap-2">{actionLabel}<span className="transition-transform group-hover:translate-x-1">→</span></span>
+            <span className="relative z-10 flex items-center justify-center gap-2">{actionLabel}<ArrowRight size={17} weight="bold" className="transition-transform group-hover:translate-x-1" aria-hidden="true" /></span>
           </button>
         )}
       </div>

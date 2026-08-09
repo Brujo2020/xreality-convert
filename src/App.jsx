@@ -11,6 +11,20 @@ const IMAGE_MODEL = 'x/z-image-turbo:latest';
 const PREFERRED_IMAGE_MODELS = ['x/flux2-klein:latest', 'x/flux2-klein', IMAGE_MODEL];
 const MAX_HISTORY = 20;
 
+function resolveAssetPreset(category, profileId) {
+  const profile = XR_PROFILES[profileId];
+  const semanticDefault = profileId === category.profile;
+  return {
+    ...profile,
+    profile: profileId,
+    octree: semanticDefault ? category.octree : Math.min(category.octree, profile.octree),
+    targetFaces: semanticDefault ? category.targetFaces : Math.min(category.targetFaces, profile.targetFaces),
+    texture: profile.texture,
+    textureSize: semanticDefault ? category.textureSize || profile.textureSize : profile.textureSize,
+    paintBackend: semanticDefault ? category.paintBackend || profile.paintBackend : profile.paintBackend,
+  };
+}
+
 // Models we prefer for STL code generation, in order. Falls back to the first
 // available text model if none of these are installed.
 const PREFERRED_STL_MODELS = [
@@ -70,7 +84,6 @@ export default function App() {
   const [backgroundMode, setBackgroundMode] = useState('auto');
   const [subjectPadding, setSubjectPadding] = useState(MODEL_CATEGORIES.industrial.padding);
   const [stlMm, setStlMm] = useState(60); // target longest-axis size for STL export
-  const [texture3d, setTexture3d] = useState(false); // Stage 2 PBR texture
   const [asset, setAsset] = useState({ profile: 'xreal', ...XR_PROFILES.xreal });
   const [hunyuanUp, setHunyuanUp] = useState(false);
   const [installingEngine, setInstallingEngine] = useState(false);
@@ -86,6 +99,7 @@ export default function App() {
 
   // --- Gallery ---
   const [history, setHistory] = useState([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const hasInitStlModel = useRef(false);
   const hasInitImageModel = useRef(false);
@@ -168,8 +182,15 @@ export default function App() {
 
   useEffect(() => {
     checkStatus();
-    const id = setInterval(checkStatus, 5000);
-    return () => clearInterval(id);
+    const tick = () => {
+      if (!document.hidden) checkStatus();
+    };
+    const id = setInterval(tick, 5000);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', tick);
+    };
   }, [checkStatus]);
 
   // Poll the local 3D server's health (only meaningful in image3d mode).
@@ -180,10 +201,15 @@ export default function App() {
       if (active) setHunyuanUp(!!r.up);
     };
     ping();
-    const id = setInterval(ping, 5000);
+    const visiblePing = () => {
+      if (!document.hidden) ping();
+    };
+    const id = setInterval(visiblePing, 5000);
+    document.addEventListener('visibilitychange', visiblePing);
     return () => {
       active = false;
       clearInterval(id);
+      document.removeEventListener('visibilitychange', visiblePing);
     };
   }, []);
 
@@ -254,20 +280,30 @@ export default function App() {
       }
       setError(null);
       setGenerating(true);
-      setProgress({ percent: 0, label: 'Enviando referencia…', remaining: null });
-      const res = await window.hunyuan.generate3D({
-        imageBase64: image3dInput.base64,
-        steps: steps3d,
-        octree: asset.octree,
-        texture: asset.texture,
-        targetFaces: asset.targetFaces,
-        scale: asset.scale,
-        profile: asset.profile,
-        category: modelCategory,
-        guidance: guidance3d,
-        backgroundMode,
-        subjectPadding,
-      });
+      setProgress({ percent: 1, label: 'Verificando motor local…', remaining: null });
+      let res;
+      try {
+        res = await window.hunyuan.generate3D({
+          imageBase64: image3dInput.base64,
+          steps: steps3d,
+          octree: asset.octree,
+          texture: asset.texture,
+          textureSize: asset.textureSize,
+          paintBackend: asset.paintBackend || 'fast',
+          materialHint: asset.materialHint || 'auto',
+          targetFaces: asset.targetFaces,
+          scale: asset.scale,
+          profile: asset.profile,
+          category: modelCategory,
+          guidance: guidance3d,
+          backgroundMode,
+          subjectPadding,
+        });
+      } catch (generationError) {
+        setGenerating(false);
+        setError(`No se pudo iniciar la conversión 3D: ${generationError?.message || generationError}`);
+        return;
+      }
       if (!res.ok) {
         setGenerating(false);
         if (!res.cancelled) setError(res.error || 'Génération 3D échouée.');
@@ -286,11 +322,20 @@ export default function App() {
         qualityLevel: res.qualityLevel,
         qualityScore: res.qualityScore,
         qualityText: res.qualityText,
-        steps: steps3d,
-        textured: asset.texture,
+        steps: res.executionPlan?.steps ?? steps3d,
+        textured: res.textureApplied === true,
+        textureRequested: asset.texture,
+        textureReport: res.textureReport,
+        shapeGlbPath: res.shapeGlbPath,
+        masterGlbPath: res.masterGlbPath,
+        executionPlan: res.executionPlan,
         profile: asset.profile,
-        targetFaces: asset.targetFaces,
-        textureSize: asset.textureSize,
+        targetFaces: res.executionPlan?.target_faces ?? asset.targetFaces,
+        textureSize: res.executionPlan?.texture_resolution === 1024 ? '1K' : asset.textureSize,
+        paintBackend: res.executionPlan?.paint_backend || asset.paintBackend || 'fast',
+        materialHint: res.material || asset.materialHint || 'auto',
+        artDirector: res.artDirector || null,
+        buffaloStrategy: res.buffaloStrategy || null,
         scale: asset.scale,
         prompt: image3dInput.name, // shown as the label
         inputDataUrl: image3dInput.dataUrl,
@@ -453,6 +498,24 @@ export default function App() {
     return { path: dest, dims: conv.dims_mm };
   }, [result, stlMm]);
 
+  const handleSaveOpenUsd = useCallback(async () => {
+    if (!result || result.type !== 'glb') return null;
+    if (result.qualityLevel === 'critico') {
+      setError('La calidad del modelo es crítica; corrige la entrada antes de exportar OpenUSD.');
+      return null;
+    }
+    const converted = await window.hunyuan.convertOpenUsd({ glbPath: result.glbPath });
+    if (!converted.ok) {
+      setError(converted.error || 'No se pudo validar la conversión OpenUSD.');
+      return null;
+    }
+    const dest = await window.hunyuan.saveGlb({
+      srcPath: converted.usdz_path,
+      filename: timestampName(result.faces || 'model', 'usdz'),
+    });
+    return { path: dest, report: converted };
+  }, [result]);
+
   const handleCopyPrompt = useCallback(async () => {
     if (result?.prompt) {
       await navigator.clipboard.writeText(result.prompt);
@@ -466,8 +529,7 @@ export default function App() {
     setError(null);
     if (entry.type === 'glb') {
       setMode('image3d');
-      const glbBase64 =
-        entry.glbBase64 || (await window.hunyuan.readGlb(entry.glbPath));
+      const glbBase64 = entry.glbBase64 || null;
       setResult({ ...entry, glbBase64 });
       return;
     }
@@ -561,12 +623,15 @@ export default function App() {
   const handleSelectUseCase = useCallback((id) => {
     const recipe = USE_CASES[id];
     const category = MODEL_CATEGORIES[recipe.category];
-    const profile = XR_PROFILES[recipe.profile];
+    const resolved = resolveAssetPreset(category, recipe.profile);
     setUseCase(id);
     setModelCategory(recipe.category);
     setMode(recipe.mode);
-    setAsset({ ...profile, profile: recipe.profile, octree: category.octree, scale: recipe.scale });
-    setSteps3d(category.steps);
+    setAsset({
+      ...resolved,
+      scale: recipe.scale,
+    });
+    setSteps3d(recipe.profile === category.profile ? category.steps : Math.min(category.steps, resolved.steps));
     setGuidance3d(category.guidance);
     setBackgroundMode(category.backgroundMode);
     setSubjectPadding(category.padding);
@@ -580,9 +645,12 @@ export default function App() {
 
   const handleSelectModelCategory = useCallback((id) => {
     const category = MODEL_CATEGORIES[id];
-    const profile = XR_PROFILES[category.profile];
+    const resolved = resolveAssetPreset(category, category.profile);
     setModelCategory(id);
-    setAsset({ ...profile, profile: category.profile, octree: category.octree, targetFaces: category.targetFaces, scale: category.scale });
+    setAsset({
+      ...resolved,
+      scale: category.scale,
+    });
     setSteps3d(category.steps);
     setGuidance3d(category.guidance);
     setBackgroundMode(category.backgroundMode);
@@ -591,12 +659,22 @@ export default function App() {
   }, []);
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden bg-base text-neutral-200 before:pointer-events-none before:absolute before:inset-0 before:bg-[linear-gradient(rgba(82,215,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(82,215,255,0.025)_1px,transparent_1px)] before:bg-[size:42px_42px]">
-      <Header status={status} onRefresh={checkStatus} />
+    <div className="app-shell relative flex h-full flex-col overflow-hidden bg-base text-neutral-200">
+      <Header
+        status={status}
+        hunyuanUp={hunyuanUp}
+        mode={mode}
+        processing={processing}
+        progress={progress}
+        historyCount={history.length}
+        historyOpen={historyOpen}
+        onToggleHistory={() => setHistoryOpen((open) => !open)}
+        onRefresh={checkStatus}
+      />
 
-      <div className="relative z-10 flex min-h-0 flex-1 gap-3 p-3">
+      <div className="workspace-grid relative z-10 flex min-h-0 flex-1 gap-3 p-3">
         {/* Left: form */}
-        <aside className="w-[380px] shrink-0 overflow-hidden rounded-[24px] border border-sky-200/10 bg-panel/65 shadow-[0_25px_70px_rgba(0,5,20,0.35)] backdrop-blur-xl">
+        <aside className="control-rail workspace-window w-[356px] shrink-0 overflow-hidden rounded-[22px]">
           <PromptPanel
             connected={status.connected}
             useCase={useCase}
@@ -631,8 +709,6 @@ export default function App() {
             setSubjectPadding={setSubjectPadding}
             stlMm={stlMm}
             setStlMm={setStlMm}
-            texture3d={texture3d}
-            setTexture3d={setTexture3d}
             analysis={analysis}
             analysisLoading={analysisLoading}
             asset={asset}
@@ -649,7 +725,7 @@ export default function App() {
         </aside>
 
         {/* Center: result */}
-        <main className="min-w-0 flex-1 overflow-hidden rounded-[24px] border border-sky-200/10 bg-[#041023]/70 shadow-[0_25px_80px_rgba(0,4,18,0.4)] backdrop-blur-xl">
+        <main className="result-stage workspace-window min-w-0 flex-1 overflow-hidden rounded-[22px]">
           <ImageViewer
             result={result}
             generating={generating}
@@ -658,8 +734,10 @@ export default function App() {
             useCase={useCase}
             mode={mode}
             error={error}
+            onCancel={handleCancel}
             onSave={handleSave}
             onSaveStl={handleSaveStl3d}
+            onSaveOpenUsd={handleSaveOpenUsd}
             onCopyPrompt={handleCopyPrompt}
             onReveal={(p) => window.ollama.revealInFinder(p)}
             asset={asset}
@@ -668,13 +746,18 @@ export default function App() {
         </main>
 
         {/* Right: gallery */}
-        <aside className="w-[220px] shrink-0 overflow-hidden rounded-[24px] border border-sky-200/10 bg-panel/65 shadow-[0_25px_70px_rgba(0,5,20,0.3)] backdrop-blur-xl">
-          <Gallery
-            history={history}
-            activeId={result?.id}
-            onSelect={handleSelectFromGallery}
-          />
-        </aside>
+        {historyOpen && (
+          <aside className="history-rail workspace-window w-[210px] shrink-0 overflow-hidden rounded-[22px]">
+            <Gallery
+              history={history}
+              activeId={result?.id}
+              onSelect={(entry) => {
+                handleSelectFromGallery(entry);
+                setHistoryOpen(false);
+              }}
+            />
+          </aside>
+        )}
       </div>
     </div>
   );

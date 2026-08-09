@@ -1,0 +1,24 @@
+{
+  "glb": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/trellis2-pedro-512-smoke-2026-08-02/trellis2-pedro-512-smoke.glb",
+  "glbSha256": "b7baa808c42ba5fa543fd804bab2cd5d99457f089daa611efd6e2ef5ac03dbcf",
+  "hdriInvoked": false,
+  "lighting": "embedded_base_color_only",
+  "projectionReport": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/trellis2-pedro-512-smoke-2026-08-02/projection-report.json",
+  "projectionReportSha256": "dc558a285e06741ce8f87482c2f21bad1e50f0cd2cb69cca7ce0a36c1cb29c55",
+  "renderer": "5.1.2",
+  "renders": [
+    {
+      "path": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/trellis2-pedro-512-smoke-2026-08-02/renders/blender-front.png",
+      "sha256": "81f80d121ecbc7ee28dea80b6b75c3f49beb29a4501ae871f5b4bd1df854f928"
+    },
+    {
+      "path": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/trellis2-pedro-512-smoke-2026-08-02/renders/blender-quarter-left.png",
+      "sha256": "3ebd14753a1c86520b7331f43c4a3342bfd21bcf76de597cf63a38ef83ce93bf"
+    },
+    {
+      "path": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/trellis2-pedro-512-smoke-2026-08-02/renders/blender-quarter-right.png",
+      "sha256": "07d662be7237ad2a28245ba08ae33c278587b92f65d9e48301ac09cbc7707cd8"
+    }
+  ],
+  "schemaVersion": 1
+}

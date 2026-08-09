@@ -1,0 +1,334 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-03",
+  "host": {
+    "chip": "Apple M5 Pro",
+    "unified_memory_gb": 24
+  },
+  "corpus_sha256": "8b674a6c3f75f6d5e9851404911011e378b17788b060f3a1d496952de7189c22",
+  "outcome": {
+    "shape_operational_leader": "dgrauet-hunyuan3d-2.1-mlx",
+    "shape_promoted_winner": null,
+    "texture_quality_leader": "agenticvibes-hunyuan-paint-mlx",
+    "texture_winner": null,
+    "overall_winner": null,
+    "reason": "AgenticVibes completed comparable local PBR inference and clearly leads texture fidelity, but its hybrid MLX+MPS path exceeded the 24 GB memory budget and the shared source mesh missed the strict silhouette gate. dgrauet remains the operational Shape leader; no candidate is promoted overall."
+  },
+  "category_scoreboard": {
+    "shape_general": {"leader": "dgrauet-hunyuan3d-2.1-mlx", "status": "provisional_measured"},
+    "texture_visual": {"leader": "agenticvibes-hunyuan-paint-mlx+reference-lock", "status": "quality_leader_not_operational_winner"},
+    "lowpoly_mobile": {"leader": "dgrauet-shape+fast-paint", "status": "operational_route"},
+    "human": {"leader": "dgrauet-shape+agentic-paint", "status": "provisional_route_missing_multiview_and_normal_map"},
+    "animal": {"leader": "dgrauet-shape+agentic-paint", "status": "provisional_route_partial_fox_evidence"},
+    "product_simple": {"leader": "dgrauet-shape+fast-paint", "status": "provisional_operational_route"},
+    "industrial_construction": {"leader": null, "status": "no_category_corpus"},
+    "vehicle_crane": {"leader": null, "status": "no_category_corpus_multiview_required"},
+    "warehouse_architecture": {"leader": null, "status": "single_image_insufficient"},
+    "advanced_materials": {"leader": null, "status": "no_candidate_delivers_complete_master_map_contract"}
+  },
+  "dgrauet": {
+    "model_revision": "aab209dc3a3c4da396bc934fd153b220f6d8d9d6",
+    "code_revision": "58e61ee5a86aec095387d9fcda343c1cab4aaa9e",
+    "code_dirty": true,
+    "shape": {
+      "status": "structural_pass",
+      "promotion_passed": false,
+      "steps": 10,
+      "octree_resolution": 128,
+      "seed": 42,
+      "inference_seconds": 93.787,
+      "wall_seconds": 100.56,
+      "peak_memory_footprint_bytes": 10710390400,
+      "swap_count": 0,
+      "vertices": 89680,
+      "faces": 179368,
+      "components": 4,
+      "watertight_meshes": 1,
+      "glb_bytes": 3229392,
+      "glb_sha256": "fb2f55573bb98e18f165f3fe587f3a808d2193d1adbd20a6f2944aaba1c1dae2",
+      "visual_quality": "not_measured"
+    },
+    "paint": {
+      "status": "structural_pass_visual_reject",
+      "promotion_passed": false,
+      "texture_resolution": 1024,
+      "views": 6,
+      "steps": 15,
+      "seed": 42,
+      "service_elapsed_seconds": 248.313,
+      "mlx_peak_mb": 15168.8,
+      "vertices": 22447,
+      "faces": 40000,
+      "components": 116,
+      "watertight_meshes": 0,
+      "materials": 1,
+      "embedded_textures": 2,
+      "glb_bytes": 2819956,
+      "glb_sha256": "f6e55e1339668eb1cd3ecdb1a372b57a757bc9be31e9eb2bd81fc26e4e4e012c",
+      "structural_score": 80,
+      "upstream_visual_gate": "pass",
+      "arena_visual_gate": "reject",
+      "human_visual_review": "reject",
+      "metrics": {
+        "silhouette_iou": 0.7823,
+        "spatial_color_correlation": 0.7718,
+        "quarter_left_palette_similarity": 0.9331,
+        "quarter_left_color_retention": 0.9732,
+        "quarter_right_palette_similarity": 0.9163,
+        "quarter_right_color_retention": 1.0
+      },
+      "visual_defects": [
+        "facial features and eyes lost or distorted",
+        "smeared and fragmented projection across face, chest, and body",
+        "floral details warped",
+        "visible hard patch boundaries and cracks"
+      ]
+    }
+  },
+  "agenticvibes": {
+    "model_revision": "06ff58f0778649cbfc18f393925373782c6a705b",
+    "code_revision": "3d8e93106f4b91cfb3b24ffc311a3b432b091a86",
+    "tencent_paint_revision": "0b94677654c57bb9a6b6845cd7b704ccf551d327",
+    "dinov2_revision": "611a9d42f2335e0f921f1e313ad3c1b7178d206d",
+    "weights_deep_hash_verified": true,
+    "python_static_compile": "pass",
+    "mlx_backend_load": {
+      "status": "pass",
+      "elapsed_seconds": 3.792,
+      "unet_weight_arrays": 1811,
+      "vae_weight_arrays": 248,
+      "mlx_active_mb": 4260.7,
+      "mlx_peak_mb": 4260.7,
+      "maximum_resident_set_bytes": 5368430592,
+      "peak_memory_footprint_bytes": 8593906864,
+      "swaps": 0
+    },
+    "image_to_mesh": "not_supported",
+    "mesh_image_to_pbr": {
+      "status": "structural_pass_texture_pass_global_visual_reject_memory_reject",
+      "steps": 4,
+      "views": 6,
+      "view_resolution": 512,
+      "texture_resolution": 1024,
+      "seed": 42,
+      "diffusion_seconds": 117.132,
+      "bake_seconds": 7.08,
+      "inpaint_seconds": 0.674,
+      "wall_seconds": 125.436,
+      "mlx_peak_gb": 13.451,
+      "mps_current_gb_after_run": 7.185,
+      "mps_driver_gb_after_run": 26.995,
+      "process_max_rss_gb": 12.625,
+      "peak_memory_footprint_gb": 28.983,
+      "swap_delta_mb": 11319.75,
+      "glb_sha256": "7167c946f94594ae70dffcf47025fec68c70333852034323fb3117a8c5ef9476",
+      "native_gate": {
+        "decision": "reject",
+        "reasons": ["silhouette_mismatch"],
+        "silhouette_iou": 0.7823,
+        "spatial_color_correlation": 0.8101,
+        "quarter_left_palette_similarity": 0.9204,
+        "quarter_left_color_retention": 0.9885,
+        "quarter_right_palette_similarity": 0.9184,
+        "quarter_right_color_retention": 1.0
+      },
+      "reference_lock_facing_005": {
+        "decision": "pass",
+        "color_similarity": 0.9467,
+        "localized_error_ratio": 0.0463,
+        "severe_seam_ratio": 0.015,
+        "projected_texel_ratio": 0.1913,
+        "synthetic_completion_applied": false,
+        "output_glb_sha256": "d133662131bf712ee3485c631ac62d818c41a60621f7a1170cdf0aa59d5967d2"
+      },
+      "memory_hardening": {
+        "duplicate_pytorch_unet_released": true,
+        "dino_released_after_embedding": true,
+        "four_step_output_identical_to_baseline": true,
+        "four_step_glb_sha256": "7167c946f94594ae70dffcf47025fec68c70333852034323fb3117a8c5ef9476",
+        "four_step_process_max_rss_gb": 7.263,
+        "four_step_peak_memory_footprint_gb": 23.454,
+        "four_step_mps_current_gb": 3.273,
+        "four_step_mlx_peak_gb": 13.376,
+        "note": "Peak footprint fell by 5.53 GB without changing output. Swap measurements after the baseline are contaminated by existing macOS memory pressure; a clean-boot benchmark is still required for promotion."
+      },
+      "artifact_dir": "benchmarks/model-arena/artifacts/agenticvibes-fox-paint1k-2026-08-03"
+    },
+    "promotion_passed": false,
+    "blockers": [
+      "hybrid MLX UNet plus PyTorch MPS encoders, DINO, VAE and baking exceeds the 24 GB host budget",
+      "upstream source needs an arm64 rasterizer rebuild and a trust_remote_code compatibility patch",
+      "requirements are not version pinned",
+      "no upstream automated tests were found"
+    ]
+  },
+  "pedronaugusto_trellis2_apple": {
+    "code_revision": "6055b868734af6e12769d229d90580e775fae9f0",
+    "python_static_compile": "pass",
+    "native_revisions": {
+      "mtldiffrast": "4668cd91cb6d27f5e264731f94a06841fbf7aab8",
+      "mtlmesh": "212079e55772cff3d648a21372392c37e0643f3b",
+      "mtlgemm": "867aec8234299a7fe1ede7f802c8debe5a939a82"
+    },
+    "metal_toolchain": "17F109",
+    "mtldiffrast_build": "pass",
+    "mtldiffrast_wheel_sha256": "24bfb84b658378ab2db0de3f61c7fd51eea6bfd9da7182879c64883417a84450",
+    "rasterizer_tests": "3_passed",
+    "flex_gemm_revision": "867aec8234299a7fe1ede7f802c8debe5a939a82",
+    "flex_gemm_wheel_sha256": "d26aad00c0ecc686ae98afd9bc12a8ee9b3053101f066d6e77b4d212bc3a8d25",
+    "flex_gemm_integration": {
+      "status": "pass",
+      "voxels": 848,
+      "channels": 32,
+      "dense_masked_max_diff": 0.0
+    },
+    "cumesh_revision": "212079e55772cff3d648a21372392c37e0643f3b",
+    "cumesh_wheel_sha256": "4a8cf4bd8892f8cd99147b2ad81f1dd72672715fca2aef31e5749ab3a80c280c",
+    "mtlbvh_revision": "23f441c470ce1f537e1fd836f3ffb5b8245f7975",
+    "mtlbvh_wheel_sha256": "596f05f30020095ef3ea78e747f26bef93b987cd17312b38a066582f24268312",
+    "cumesh_integration": {
+      "status": "pass",
+      "vertices": 8,
+      "faces": 12,
+      "boundaries": 0,
+      "atlas_vertices": 24,
+      "uv_min": 0.0017123287543654442,
+      "uv_max": 0.9982876777648926,
+      "bvh_distances": [1.0, 1.0],
+      "swaps": 0
+    },
+    "model_revision": "af44b45f2e35a493886929c6d786e563ec68364d",
+    "model_download_size_gb_reported": 16.2,
+    "e2e_attempt": {
+      "status": "pass_smoke_visual_reject",
+      "pipeline_type": "512",
+      "seed": 42,
+      "steps_per_stage": 4,
+      "model_weights_downloaded_gb": 9.7,
+      "dinov3_revision": "ea8dc2863c51be0a264bab82070e3e8836b02d51",
+      "trellis_image_large_revision": "25e0d31ffbebe4b5a97464dd851910efc3002d96",
+      "rmbg_access": {
+        "repo": "briaai/RMBG-2.0",
+        "revision": "5df4c9c76d8170882c34f6986e848ee07fd0ba43",
+        "browser_access": "granted",
+        "cli_access": "granted",
+        "required_for_controlled_rgba_e2e": false,
+        "license_gate": "CC_BY_NC_4_0_self_hosted_commercial_agreement_required"
+      },
+      "rembg_bypass": {
+        "status": "preprocess_pass",
+        "strategy": "skip_briaai_RMBG-2.0_for_transparent_RGBA_input",
+        "input": "pedronaugusto_repo/assets/example_image/T.png",
+        "input_mode": "RGBA",
+        "alpha_range": [0, 255],
+        "processed_mode": "RGB",
+        "processed_size": [922, 922]
+      },
+      "decoded_mesh": {
+        "vertices": 1573657,
+        "faces": 3435650
+      },
+      "generation_seconds": 60.355,
+      "postprocess_seconds": 30.046,
+      "mlx_peak_gb": 13.992,
+      "process_max_rss_gb": 5.423,
+      "swaps": 0,
+      "glb": {
+        "bytes": 9711088,
+        "vertices": 157146,
+        "faces": 94605,
+        "components": 34082,
+        "uv_gate": "pass",
+        "pbr_gate": "pass",
+        "textures": 2,
+        "texture_resolution": 1024,
+        "structural_score": 80.0
+      },
+      "human_visual_decision": "reject",
+      "visual_reasons": [
+        "detached_and_floating_fragments",
+        "transparency_holes",
+        "degraded_thin_and_fine_details",
+        "excessive_disconnected_components"
+      ],
+      "artifact_dir": "benchmarks/model-arena/artifacts/trellis2-pedro-512-smoke-2026-08-02",
+      "weights_downloaded": true,
+      "inference_started": true
+    },
+    "system_transformers_version": "5.14.1",
+    "isolated_e2e_dependencies": {
+      "python": "3.11.15",
+      "torch": "2.13.0",
+      "torchvision": "0.28.0",
+      "mlx": "0.32.0",
+      "transformers": {
+        "version": "4.57.6",
+        "wheel_sha256": "4c9e9de11333ddfe5114bc872c9f370509198acf0b87a832a0ab9458e2bd0550"
+      },
+      "huggingface_hub": {
+        "version": "0.36.0",
+        "wheel_sha256": "7bcc9ad17d5b3f07b57c78e79d527102d08313caa278a641993acddcb894548d"
+      },
+      "easydict": {
+        "version": "1.13",
+        "wheel_sha256": "6b787daf4dcaf6377b4ad9403a5cee5a86adbc0ca9a5bcf5410e9902002aeac2"
+      },
+      "trimesh": {
+        "version": "4.12.2",
+        "wheel_sha256": "b5b5afa63c5272345f2858f7676bc8c217dc8a89f4fadf6193fe10a81b5ff2aa"
+      },
+      "opencv_python_headless": {
+        "version": "4.14.0.94",
+        "wheel_sha256": "bc7db37dc234f7bb3190a158fd9dd750357246fc7d8adb23698843ef721a993b"
+      },
+      "xatlas": {
+        "version": "0.0.11",
+        "source_sha256": "72f0bc6c42c19252be87e947d9dfe251c8d6c6943fd43e3d173ddc6b1afad693",
+        "built_wheel_sha256": "36f3e406cd7bbd56b266afeb239840337768f5c3d8c4d8c7eaf4d10f0f51bf19"
+      },
+      "fast_simplification": {
+        "version": "0.1.13",
+        "wheel_sha256": "f3bcd10b5de2a85fe41d4ba27ccdf3adc723c2a0f5a1afb47f01e95c6c158651"
+      }
+    },
+    "required_transformers": ">=4.40.0,<5",
+    "requirements_pinned": false,
+    "image_to_mesh": "pass_four_step_smoke",
+    "image_to_pbr_glb": "structural_pass_visual_reject",
+    "mesh_image_to_pbr": "no_mlx_entrypoint",
+    "promotion_passed": false
+  },
+  "xocialize_trellis2_mlx_swift": {
+    "code_revision": "005a372280d56bea260657d4962f4230af6bfe4d",
+    "resolved_mlx_swift_version": "0.31.6",
+    "trellis2_release_build": {
+      "status": "pass",
+      "seconds": 142.9,
+      "warnings": "deprecated_mlx_api_names"
+    },
+    "offline_conformance_gate": {
+      "status": "pass",
+      "seconds": 44.34,
+      "lanes": ["C0-C13", "MAT-1-MAT-5", "CAN-1-CAN-3"]
+    },
+    "default_res512_footprint": {
+      "resident_bytes": 18000000000,
+      "peak_activation_bytes": 18000000000,
+      "admitted_on_24gb_host": false
+    },
+    "res1024_measured_peak_physical_bytes_declared_upstream": 46760000000,
+    "res1536_measured_peak_physical_bytes_declared_upstream": 76970000000,
+    "weights": "gated_not_local",
+    "image_to_mesh": "not_e2e_tested",
+    "mesh_image_to_pbr": "not_e2e_tested",
+    "promotion_passed": false
+  },
+  "other_candidates": {
+    "agenticvibes-hunyuan-paint-mlx": "e2e_texture_quality_leader_but_memory_and_global_silhouette_reject",
+    "mv-adapter-sd21": "promising_708mb_adapter_and_under_10gb_cuda_claim_but_official_texturing_path_requires_nvdiffrast_cvcuda_and_cuda_solver; candidate_for_mlx_mps_port_only",
+    "mirwox-hunyuan3d-2.1-mlx": "unavailable_on_hugging_face",
+    "pedronaugusto-trellis2-apple": "native_and_512_e2e_passed_structural_pbr_visual_smoke_rejected",
+    "xocialize-trellis2-mlx-swift": "build_and_offline_gates_passed_res512_not_admitted_on_24gb_and_weights_gated",
+    "moonshotai-kimi-k3": "judge_only_not_a_3d_generator"
+  }
+}

@@ -53,7 +53,7 @@ contextBridge.exposeInMainWorld('hunyuan', {
   install: () => ipcRenderer.invoke('hunyuan:install'),
 
   // params: { imageBase64, steps, octree, mock }
-  // -> { ok, glbBase64, glbPath, faces, duration } | { ok:false, error, cancelled? }
+  // -> { ok, glbPath, faces, duration } | { ok:false, error, cancelled? }
   generate3D: (params) => ipcRenderer.invoke('hunyuan:generate3D', params),
 
   // Subscribe to progress updates emitted by the main process.
@@ -70,6 +70,9 @@ contextBridge.exposeInMainWorld('hunyuan', {
 
   // Convert a generated GLB to a printable STL -> { ok, stl_path, dims_mm, watertight }
   convertStl: (args) => ipcRenderer.invoke('hunyuan:convertStl', args),
+
+  // Convert a generated GLB to a validated RealityKit/OpenUSD package.
+  convertOpenUsd: (args) => ipcRenderer.invoke('hunyuan:convertOpenUsd', args),
 
   // Read a cached/saved GLB back as base64 (for gallery re-display).
   readGlb: (filePath) => ipcRenderer.invoke('hunyuan:readGlb', filePath),

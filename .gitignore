@@ -1,9 +1,9 @@
-```
 # Compiled and build artifacts
 *.pyc
 __pycache__/
 *.o
 *.obj
+.DS_Store
 
 # Dependencies
 .venv/
@@ -33,4 +33,6 @@ htmlcov/
 dist/
 build/
 target/
-```
+release/
+ui-smoke-output/
+engine/.upstream-git/
