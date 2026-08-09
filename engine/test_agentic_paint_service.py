@@ -60,6 +60,14 @@ class AgenticAdmissionTests(unittest.TestCase):
                 )
         self.assertEqual(resolved, cached)
 
+    def test_missing_snapshot_fails_closed_without_an_online_repair(self):
+        with mock.patch.object(agentic_paint_service, "snapshot_download", side_effect=RuntimeError("absent")) as download:
+            with self.assertRaisesRegex(RuntimeError, "Snapshot local incompleto"):
+                agentic_paint_service._snapshot("owner/model", "revision")
+
+        self.assertEqual(download.call_count, 1)
+        self.assertTrue(download.call_args.kwargs["local_files_only"])
+
 
 if __name__ == "__main__":
     unittest.main()

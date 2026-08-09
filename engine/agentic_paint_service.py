@@ -97,24 +97,13 @@ def _snapshot(repo_id, revision, *, allow_patterns=None, required_files=()):
         if required_files and _has_required_files(local, required_files):
             return local
 
-    # A real weight/config is absent. Attempt an online repair even if the
-    # parent shell exported offline mode; only the isolated inference child is
-    # forced offline after all model paths have been resolved.
-    previous_hf_offline = os.environ.pop("HF_HUB_OFFLINE", None)
-    previous_transformers_offline = os.environ.pop("TRANSFORMERS_OFFLINE", None)
-    try:
-        repaired = Path(snapshot_download(**kwargs, local_files_only=False))
-    finally:
-        if previous_hf_offline is not None:
-            os.environ["HF_HUB_OFFLINE"] = previous_hf_offline
-        if previous_transformers_offline is not None:
-            os.environ["TRANSFORMERS_OFFLINE"] = previous_transformers_offline
-    if required_files and not _has_required_files(repaired, required_files):
-        missing = [name for name in required_files if not (repaired / name).is_file()]
-        raise RuntimeError(
-            f"Snapshot reparado pero incompleto para {repo_id}: {', '.join(missing)}"
-        )
-    return repaired
+    # Inference never repairs a cache over the network. Model installation is
+    # a separate, explicitly consented operation; allowing a hot path to fetch
+    # weights would violate the job's local-first privacy and cost contract.
+    raise RuntimeError(
+        f"Snapshot local incompleto para {repo_id}@{revision}; "
+        "instala y verifica los pesos antes de ejecutar el job."
+    )
 
 
 class AgenticPaintService:

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Xreality Buffalo Superpowers"
+  short_description: "Orquesta generación 3D local con gates estrictos"
+  default_prompt: "Usa $xreality-buffalo-superpowers para planificar y auditar este activo 3D local-first."

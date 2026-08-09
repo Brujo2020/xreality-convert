@@ -1,5 +1,6 @@
 import asyncio
 import inspect
+import os
 import sys
 import tempfile
 import time
@@ -43,6 +44,10 @@ class GetPipelineTests(unittest.TestCase):
             "dgrauet/hunyuan3d-2.1-mlx"
         )
 
+    @unittest.skipUnless(
+        os.environ.get("XREALITY_ENABLE_MLX_INTEGRATION_TESTS") == "1",
+        "requires a real Apple Metal device; set XREALITY_ENABLE_MLX_INTEGRATION_TESTS=1",
+    )
     def test_bundled_shape_runtime_is_sequential_and_reports_progress(self):
         from hy3dshape.hy3dshape.pipeline_mlx import ShapePipeline
 
@@ -52,7 +57,7 @@ class GetPipelineTests(unittest.TestCase):
         self.assertIn("dit_loader", constructor)
         self.assertIn("vae_loader", constructor)
         self.assertIn("progress_callback", generation)
-        self.assertEqual(server.ENGINE_VERSION, "18")
+        self.assertEqual(server.ENGINE_VERSION, "19")
 
     def test_reference_padding_matches_hunyuan_border_ratio(self):
         image = Image.new("RGBA", (100, 100), (0, 0, 0, 0))
@@ -82,6 +87,20 @@ class GetPipelineTests(unittest.TestCase):
 
         self.assertEqual(report["bytes"], 12)
         self.assertEqual(len(report["sha256"]), 64)
+
+    def test_status_exposes_control_plane_without_leaking_ledger_object(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ledger = server.JobLedger(directory, "c" * 32)
+            server.job_ledgers["c" * 32] = ledger
+            server.jobs["c" * 32] = {"status": "queued"}
+            try:
+                report = server.status("c" * 32)
+            finally:
+                server.job_ledgers.pop("c" * 32, None)
+                server.jobs.pop("c" * 32, None)
+
+        self.assertEqual(report["control_plane"]["state"]["state"], "DRAFT")
+        self.assertIn("journal.jsonl", report["control_plane"]["journal_path"])
 
     def test_open_product_is_attention_for_xr_but_rejected_for_master(self):
         import trimesh

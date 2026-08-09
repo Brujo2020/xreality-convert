@@ -20,4 +20,6 @@ exec "$PYTHON_RUNTIME" -m unittest \
   test_agentic_paint_service \
   test_paint_service \
   test_reference_projection \
-  test_benchmark_arena
+  test_benchmark_arena \
+  test_buffalo_runtime \
+  test_secure_artifacts

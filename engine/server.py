@@ -43,9 +43,19 @@ from buffalo_strategy import (
     embed_strategy_metadata,
     validate_assembly_preservation,
 )
+from buffalo_runtime import (
+    ContractError,
+    JobLedger,
+    build_evidence_manifest,
+    build_job_contract,
+    decode_base64_image,
+    make_read_only,
+    validate_image_bytes,
+)
 from pbr_glb import apply_material_features, validate_material_contract
 from openusd_export import convert_glb_to_usdz
 from reference_projection import validate_native_paint_glb
+from secure_artifacts import validate_glb_container
 
 ROOT = Path(__file__).resolve().parent
 SOURCE = ROOT / "Hunyuan3D-2.1-mlx"
@@ -59,6 +69,7 @@ REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 SCENE_CATEGORIES = {"architecture", "warehouse", "building", "electrical", "solar"}
 
 jobs = {}
+job_ledgers = {}
 shape_pipeline = None
 load_error = None
 background_session = None
@@ -67,7 +78,7 @@ pipeline_lock = threading.RLock()
 generation_lock = threading.Lock()
 preload_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="xreality-shape-load")
 ENGINE_TOKEN = os.environ.get("XREALITY_ENGINE_TOKEN", "")
-ENGINE_VERSION = "18"
+ENGINE_VERSION = "19"
 
 app = FastAPI(title="Xreality Convert 3D Engine")
 
@@ -249,7 +260,37 @@ def extract_mesh(result):
 
 
 def decode_image_base64(image_base64: str) -> bytes:
-    return base64.b64decode(image_base64, validate=True)
+    return decode_base64_image(image_base64)
+
+
+def transition_ledger(job_id: str, target: str, reason_code: str, metadata=None):
+    """Persist control-plane state without turning reporting failures into ML failures."""
+    ledger = job_ledgers.get(job_id)
+    if ledger is None:
+        return None
+    try:
+        return ledger.transition(target, reason_code, metadata)
+    except ContractError:
+        return None
+
+
+def ledger_summary(job_id: str):
+    ledger = job_ledgers.get(job_id)
+    if ledger is None:
+        return None
+    snapshot = None
+    if ledger.snapshot_path.is_file():
+        try:
+            snapshot = json.loads(ledger.snapshot_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            snapshot = {"state": "unreadable"}
+    return {
+        "state": snapshot or {"state": ledger.state},
+        "job_dir": str(ledger.job_dir),
+        "contract_path": str(ledger.contract_path),
+        "evidence_path": str(ledger.job_dir / "evidence-manifest.json"),
+        "journal_path": str(ledger.journal_path),
+    }
 
 
 def image_to_base64(image: Image.Image) -> str:
@@ -747,7 +788,9 @@ def mark_cancelled(job_id: str):
 
 
 def cleanup_job(job_id: str):
-    for suffix in (".png", "-prepared.png"):
+    # Keep the original input as immutable evidence. Prepared derivatives may be
+    # recreated from it and are safe to discard after the job exits.
+    for suffix in ("-prepared.png",):
         path = JOBS_DIR / f"{job_id}{suffix}"
         if path.exists():
             try:
@@ -983,6 +1026,7 @@ def run_job(job_id: str, request: GenerateRequest):
         requested_paint_backend=request.paint_backend,
         texture_enabled=request.texture,
     )
+    ledger = job_ledgers.get(job_id)
     def cancelled():
         return bool(job.get("cancel_requested"))
 
@@ -1005,7 +1049,28 @@ def run_job(job_id: str, request: GenerateRequest):
         })
 
         image_path = JOBS_DIR / f"{job_id}.png"
-        image_path.write_bytes(decode_image_base64(request.image_base64))
+        input_payload = decode_image_base64(request.image_base64)
+        image_info = validate_image_bytes(input_payload)
+        image_path.write_bytes(input_payload)
+        evidence_manifest = build_evidence_manifest(image_path, image_info)
+        make_read_only(image_path)
+        execution_policy = {
+            "deadline_seconds": 1800,
+            "material_contract": asset_plan["material_contract"],
+            "execution_plan": execution_plan,
+            "apple_execution": apple_execution,
+            "network_allowed": False,
+        }
+        if ledger is not None:
+            contract = build_job_contract(
+                job_id=job_id,
+                request=request.model_dump(exclude={"image_base64"}),
+                evidence_manifest=evidence_manifest,
+                semantic_contract=asset_plan["semantic_contract"],
+                execution_policy=execution_policy,
+            )
+            ledger.seal(contract, evidence_manifest)
+            ledger.transition("PREFLIGHTED", "input_admitted", {"image": image_info})
         with Image.open(image_path) as source_image:
             input_analysis = analyze_image(
                 source_image,
@@ -1050,6 +1115,11 @@ def run_job(job_id: str, request: GenerateRequest):
             )
 
         job.update({"progress": 30, "stage": "Reconstruyendo volumen"})
+        transition_ledger(job_id, "RUNNING_STAGE", "shape_started", {
+            "provider": "hunyuan3d-2.1-mlx",
+            "steps": request.steps,
+            "resolution": request.octree_resolution,
+        })
         mesh = extract_mesh(
             pipeline(
                 str(prepared_path),
@@ -1064,10 +1134,14 @@ def run_job(job_id: str, request: GenerateRequest):
         release_shape_pipeline(pipeline)
         pipeline = None
         settle_shape_memory()
+        if ledger is not None:
+            ledger.record_stage("shape", "passed", {"milestone": milestones.get("shape_inference_complete")})
+        transition_ledger(job_id, "STAGE_PASSED", "shape_passed")
         if cancelled():
             return
 
         job.update({"progress": 82, "stage": "Optimizando geometría"})
+        transition_ledger(job_id, "RUNNING_STAGE", "geometry_started")
         mesh, raw_faces = clean_mesh(mesh, request.category, request.profile)
         faces_before = len(getattr(mesh, "faces", []))
         assembly_before = capture_assembly_fingerprint(mesh)
@@ -1173,6 +1247,13 @@ def run_job(job_id: str, request: GenerateRequest):
         # stage. This file is the global recovery boundary for the job.
         geometry_checkpoint = JOBS_DIR / f"{job_id}-shape.glb"
         mesh.export(str(geometry_checkpoint))
+        if ledger is not None:
+            ledger.record_stage("geometry", "passed", {
+                "artifact": seal_artifact(geometry_checkpoint),
+                "quality": quality.get("level"),
+                "preservation": preservation_gate.get("decision"),
+            })
+        transition_ledger(job_id, "STAGE_PASSED", "geometry_passed")
 
         output = JOBS_DIR / f"{job_id}.glb"
         texture_report = None
@@ -1184,6 +1265,10 @@ def run_job(job_id: str, request: GenerateRequest):
                 else "Hunyuan Paint: 6 vistas + horneado PBR"
             )
             job.update({"progress": 90, "stage": paint_label})
+            transition_ledger(job_id, "RUNNING_STAGE", "paint_started", {
+                "backend": asset_plan["paint_backend"],
+                "texture_resolution": request.texture_resolution,
+            })
             texture_report, shape_output = apply_texture_to_mesh(
                 mesh,
                 prepared_path,
@@ -1198,6 +1283,14 @@ def run_job(job_id: str, request: GenerateRequest):
         else:
             job.update({"progress": 94, "stage": "Empaquetando GLB"})
             mesh.export(str(output))
+
+        if ledger is not None:
+            ledger.record_stage("paint_pbr", "passed" if request.texture else "admitted", {
+                "artifact": seal_artifact(output),
+                "backend": (texture_report or {}).get("backend", "geometry_only"),
+            })
+        if request.texture:
+            transition_ledger(job_id, "STAGE_PASSED", "paint_finished")
 
         metadata_report = {"embedded": False}
         try:
@@ -1322,6 +1415,13 @@ def run_job(job_id: str, request: GenerateRequest):
             },
         }
         report_path = save_report(job_id, report)
+        transition_ledger(job_id, "DELIVERY_CANDIDATE", "delivery_gated", {
+            "delivery_level": delivery_level,
+            "report": Path(report_path).name,
+        })
+        # This engine has no named human-approval UI yet. An automated success
+        # is deliberately non-master rather than a self-certified promotion.
+        transition_ledger(job_id, "NON_MASTER", "human_review_required")
         job.update(
             {
                 "status": "done",
@@ -1352,6 +1452,7 @@ def run_job(job_id: str, request: GenerateRequest):
             }
         )
     except Exception as exc:
+        transition_ledger(job_id, "STAGE_REJECTED", "stage_exception", {"error": str(exc)})
         if not recover_from_geometry_checkpoint(job_id, job, exc, started, asset_plan):
             elapsed = round(time.monotonic() - started, 1)
             failure_report = {
@@ -1385,6 +1486,7 @@ def run_job(job_id: str, request: GenerateRequest):
                 "geometry_quality": last_quality,
                 "rejected_artifact": str(rejected_artifact) if rejected_artifact else None,
             })
+            transition_ledger(job_id, "ERROR", "job_failed", {"error": str(exc)})
     finally:
         if pipeline is not None:
             release_shape_pipeline(pipeline)
@@ -1434,9 +1536,10 @@ async def generate(request: GenerateRequest):
     if not SOURCE.exists():
         raise HTTPException(503, "Motor no instalado. Ejecuta la instalación desde Xreality Convert.")
     job_id = uuid.uuid4().hex
+    job_ledgers[job_id] = JobLedger(JOBS_DIR, job_id)
     jobs[job_id] = {"status": "queued", "cancel_requested": False, "progress": 0, "stage": "En cola"}
     asyncio.create_task(asyncio.to_thread(run_job, job_id, request))
-    return {"job_id": job_id}
+    return {"job_id": job_id, "control_plane": ledger_summary(job_id)}
 
 
 @app.post("/cancel/{job_id}")
@@ -1445,12 +1548,16 @@ def cancel(job_id: str):
     if job is None:
         raise HTTPException(404, "Job no encontrado.")
     mark_cancelled(job_id)
+    transition_ledger(job_id, "CANCELLED", "user_cancelled")
     return {"ok": True, "status": job.get("status")}
 
 
 @app.get("/status/{job_id}")
 def status(job_id: str):
-    return jobs.get(job_id, {"status": "unknown"})
+    job = jobs.get(job_id)
+    if job is None:
+        return {"status": "unknown"}
+    return {**job, "control_plane": ledger_summary(job_id)}
 
 
 @app.post("/to-stl")
@@ -1458,7 +1565,12 @@ def to_stl(request: StlRequest):
     try:
         import trimesh
 
-        mesh = trimesh.load(request.glb_path, force="mesh")
+        managed_root = JOBS_DIR.resolve()
+        source = Path(request.glb_path).resolve()
+        if managed_root not in source.parents or not source.is_file():
+            raise RuntimeError("Solo se pueden convertir GLB generados dentro del directorio de jobs.")
+        validate_glb_container(source)
+        mesh = trimesh.load(source, force="mesh")
         if isinstance(mesh, trimesh.Scene):
             mesh = trimesh.util.concatenate(tuple(mesh.geometry.values()))
         if hasattr(mesh, "remove_infinite_values"):
@@ -1503,6 +1615,9 @@ def to_openusd(request: OpenUsdRequest):
         managed_root = JOBS_DIR.resolve()
         if not source.is_relative_to(managed_root):
             raise RuntimeError("Por seguridad, sólo se convierten activos generados por Xreality.")
+        if not source.is_file():
+            raise RuntimeError("El activo GLB no existe.")
+        validate_glb_container(source)
         return convert_glb_to_usdz(source, JOBS_DIR / "openusd")
     except Exception as exc:
         return {"ok": False, "error": str(exc)}

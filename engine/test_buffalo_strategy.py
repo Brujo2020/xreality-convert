@@ -5,6 +5,7 @@ from pathlib import Path
 from buffalo_strategy import (
     STRATEGY_VERSION,
     build_apple_execution_graph,
+    build_edit_delta,
     build_semantic_contract,
     build_strategy_report,
     capture_assembly_fingerprint,
@@ -47,6 +48,19 @@ class BuffaloStrategyTests(unittest.TestCase):
         self.assertIn("hook", contract["thin_part_names"])
         self.assertIn("safety_markings", [item["name"] for item in contract["material_regions"]])
         self.assertEqual(contract["semantic_evidence_status"], "not_measured")
+        self.assertEqual(contract["schema_version"], 3)
+        self.assertTrue(all(part["part_id"] for part in contract["expected_parts"]))
+
+    def test_edit_delta_is_typed_and_never_overlaps_protected_parts(self):
+        contract = build_semantic_contract("forklift")
+        fork_id = next(part["part_id"] for part in contract["expected_parts"] if part["name"] == "forks")
+        body_id = next(part["part_id"] for part in contract["expected_parts"] if part["name"] == "body")
+        delta = build_edit_delta("sha256:master", "replace_material", [fork_id], protected_part_ids=[body_id])
+
+        self.assertEqual(delta["edit_type"], "replace_material")
+        self.assertEqual(delta["tolerances"]["protected_geometry_delta"], 0.0)
+        with self.assertRaisesRegex(ValueError, "target_protected_overlap"):
+            build_edit_delta("sha256:master", "replace_material", [fork_id], protected_part_ids=[fork_id])
 
     def test_apple_graph_never_overlaps_metal_stages(self):
         graph = build_apple_execution_graph({

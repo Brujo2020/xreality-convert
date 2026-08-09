@@ -9,11 +9,20 @@ it.  Deterministic gates, rather than a VLM self-score, own promotion.
 from __future__ import annotations
 
 from copy import deepcopy
+import hashlib
 import math
 
 
 STRATEGY_VERSION = "xreality-buffalo-mlx-v1"
 STRATEGY_NAME = "Buffalo Strategic MLX"
+EDIT_TYPES = {
+    "add_part",
+    "remove_part",
+    "reshape_part",
+    "replace_material",
+    "retexture_region",
+    "transform_part",
+}
 
 
 def _part(name, minimum=1, maximum=1, *, critical=True, thin=False):
@@ -167,7 +176,26 @@ def build_semantic_contract(category="custom", profile="xreal", material="auto",
         "architecture", "industrial", "electrical", "vegetation", "building", "tool",
         "forklift", "excavator", "motorcycle", "bus", "drone", "boat", "furniture", "solar",
     }
+    for part in parts:
+        part["part_id"] = hashlib.sha256(f"{category}:{part['name']}".encode()).hexdigest()[:16]
+        part["evidence_class"] = "not_measured"
+        part["localizers"] = {
+            "aabb": None,
+            "obb": None,
+            "component_ids": [],
+            "surface_mask_hash": None,
+        }
+    material_regions = []
+    for name in regions:
+        material_regions.append({
+            "region_id": hashlib.sha256(f"{category}:material:{name}".encode()).hexdigest()[:16],
+            "name": name,
+            "evidence": "not_measured",
+            "evidence_class": "not_measured",
+            "confidence": 0.0,
+        })
     return {
+        "schema_version": 3,
         "version": STRATEGY_VERSION,
         "name": STRATEGY_NAME,
         "provenance": {
@@ -181,13 +209,50 @@ def build_semantic_contract(category="custom", profile="xreal", material="auto",
         "expected_parts": parts,
         "critical_part_names": [item["name"] for item in parts if item["critical"]],
         "thin_part_names": [item["name"] for item in parts if item["thin_structure"]],
-        "material_regions": [
-            {"name": name, "evidence": "not_measured"} for name in regions
-        ],
+        "material_regions": material_regions,
         "preserve_assembly": category in assembly_categories,
         "real_reference_views": int(real_reference_views),
         "synthetic_views_are_evidence": False,
         "semantic_evidence_status": "not_measured",
+    }
+
+
+def build_edit_delta(
+    source_master_hash,
+    edit_type,
+    target_part_ids,
+    *,
+    protected_part_ids=(),
+    geometry_operation=None,
+    material_operation=None,
+    tolerances=None,
+):
+    """Compile a bounded edit request; do not accept executable free-form edits."""
+    if edit_type not in EDIT_TYPES:
+        raise ValueError(f"unsupported_edit_type:{edit_type}")
+    if not isinstance(source_master_hash, str) or not source_master_hash:
+        raise ValueError("source_master_hash_required")
+    targets = sorted(set(target_part_ids or ()))
+    protected = sorted(set(protected_part_ids or ()))
+    if not targets:
+        raise ValueError("edit_target_required")
+    overlap = sorted(set(targets) & set(protected))
+    if overlap:
+        raise ValueError("target_protected_overlap:" + ",".join(overlap))
+    return {
+        "schema_version": 3,
+        "source_master_hash": source_master_hash,
+        "edit_type": edit_type,
+        "target_part_ids": targets,
+        "protected_part_ids": protected,
+        "geometry_operation": deepcopy(geometry_operation) if geometry_operation else None,
+        "material_operation": deepcopy(material_operation) if material_operation else None,
+        "tolerances": {
+            "protected_geometry_delta": 0.0,
+            "protected_uv_delta": 0.0,
+            "protected_material_delta": 0.0,
+            **(deepcopy(tolerances) if tolerances else {}),
+        },
     }
 
 
