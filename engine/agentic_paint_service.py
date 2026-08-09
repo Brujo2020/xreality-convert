@@ -8,13 +8,13 @@ import re
 import shutil
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 from huggingface_hub import snapshot_download
 from huggingface_hub.constants import HUGGINGFACE_HUB_CACHE
 
 from pbr_glb import validate_pbr_glb
+from stage_supervisor import StageLimits, StageSupervisor, StageWorkerError
 
 
 AGENTIC_MODEL = "AgenticVibes/hunyuan3d-2.1-mlx"
@@ -176,63 +176,22 @@ class AgenticPaintService:
             str(texture_size),
             "--reference-lock",
         ]
-        environment = os.environ.copy()
-        environment["HF_HUB_OFFLINE"] = "1"
-        environment["TRANSFORMERS_OFFLINE"] = "1"
         swap_growth_limit_mb = float(
             os.environ.get("XREALITY_MAX_AGENTIC_SWAP_GROWTH_MB", "2048")
         )
-        process = subprocess.Popen(
-            command,
-            cwd=self.app_root,
-            env=environment,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        started = time.monotonic()
-        baseline_swap = admission["snapshot"].get("swap_used_mb")
-        min_free_percent = admission["snapshot"].get("free_percent")
-        stdout = ""
-        stderr = ""
-        while True:
-            try:
-                stdout, stderr = process.communicate(timeout=2)
-                break
-            except subprocess.TimeoutExpired:
-                if time.monotonic() - started > 1800:
-                    process.terminate()
-                    stdout, stderr = process.communicate(timeout=15)
-                    raise RuntimeError("AgenticVibes excedió el límite de 30 minutos")
-                current = memory_snapshot()
-                free_percent = current.get("free_percent")
-                if free_percent is not None:
-                    min_free_percent = (
-                        free_percent
-                        if min_free_percent is None
-                        else min(min_free_percent, free_percent)
-                    )
-                swap_used = current.get("swap_used_mb")
-                unsafe_pressure = free_percent is not None and free_percent < 8
-                unsafe_swap = (
-                    baseline_swap is not None
-                    and swap_used is not None
-                    and swap_used - baseline_swap > swap_growth_limit_mb
-                )
-                if unsafe_pressure or unsafe_swap:
-                    process.terminate()
-                    try:
-                        stdout, stderr = process.communicate(timeout=15)
-                    except subprocess.TimeoutExpired:
-                        process.kill()
-                        stdout, stderr = process.communicate()
-                    reason = "memory_pressure_below_8_percent" if unsafe_pressure else "swap_growth_limit_exceeded"
-                    raise RuntimeError(
-                        f"AgenticVibes abortado por watchdog: {reason}"
-                    )
-        if process.returncode:
-            diagnostic = (stdout + "\n" + stderr)[-5000:]
-            raise RuntimeError(f"AgenticVibes Paint falló:\n{diagnostic}")
+        try:
+            worker = StageSupervisor(memory_snapshot).run(
+                command,
+                cwd=self.app_root,
+                limits=StageLimits(
+                    timeout_seconds=1800,
+                    minimum_free_percent=8,
+                    maximum_swap_growth_mb=swap_growth_limit_mb,
+                    network_allowed=False,
+                ),
+            )
+        except StageWorkerError as exc:
+            raise RuntimeError(f"AgenticVibes abortado por watchdog: {exc.reason_code}") from exc
         report_path = work_dir / "run-report.json"
         report = json.loads(report_path.read_text(encoding="utf-8"))
         reference_lock = report.get("referenceLock") or {}
@@ -256,7 +215,8 @@ class AgenticPaintService:
             "report_path": str(report_path),
             "memory_admission": admission,
             "memory_watchdog": {
-                "minimum_free_percent": min_free_percent,
+                "minimum_free_percent": worker["minimum_free_percent"],
                 "maximum_swap_growth_mb": swap_growth_limit_mb,
+                "elapsed_seconds": worker["elapsed_seconds"],
             },
         }

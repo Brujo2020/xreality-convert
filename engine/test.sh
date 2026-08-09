@@ -22,4 +22,7 @@ exec "$PYTHON_RUNTIME" -m unittest \
   test_reference_projection \
   test_benchmark_arena \
   test_buffalo_runtime \
-  test_secure_artifacts
+  test_secure_artifacts \
+  test_stage_supervisor \
+  test_shape_worker \
+  test_shape_parity

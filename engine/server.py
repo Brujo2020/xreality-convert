@@ -56,6 +56,8 @@ from pbr_glb import apply_material_features, validate_material_contract
 from openusd_export import convert_glb_to_usdz
 from reference_projection import validate_native_paint_glb
 from secure_artifacts import validate_glb_container
+from stage_supervisor import StageLimits, StageSupervisor, StageWorkerError
+from agentic_paint_service import memory_snapshot
 
 ROOT = Path(__file__).resolve().parent
 SOURCE = ROOT / "Hunyuan3D-2.1-mlx"
@@ -78,7 +80,7 @@ pipeline_lock = threading.RLock()
 generation_lock = threading.Lock()
 preload_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="xreality-shape-load")
 ENGINE_TOKEN = os.environ.get("XREALITY_ENGINE_TOKEN", "")
-ENGINE_VERSION = "19"
+ENGINE_VERSION = "20"
 
 app = FastAPI(title="Xreality Convert 3D Engine")
 
@@ -257,6 +259,59 @@ def extract_mesh(result):
     if isinstance(result, (list, tuple)):
         return result[0]
     return result
+
+
+def isolated_shape_worker_enabled():
+    """Opt-in only until physical-Metal parity has been measured."""
+    return os.environ.get("XREALITY_SHAPE_WORKER") == "1"
+
+
+def run_isolated_shape_worker(job_id, prepared_path, request):
+    """Generate a sealed Shape checkpoint in a disposable local process."""
+    raw_glb = JOBS_DIR / f"{job_id}-shape-worker.glb"
+    report_path = JOBS_DIR / f"{job_id}-shape-worker-report.json"
+    command = [
+        sys.executable, str(ROOT / "shape_worker.py"),
+        "--input", str(Path(prepared_path).resolve()),
+        "--output", str(raw_glb.resolve()),
+        "--report", str(report_path.resolve()),
+        "--steps", str(request.steps),
+        "--guidance", str(request.guidance),
+        "--octree-resolution", str(request.octree_resolution),
+    ]
+    swap_limit = float(os.environ.get("XREALITY_MAX_SHAPE_SWAP_GROWTH_MB", "2048"))
+    try:
+        watchdog = StageSupervisor(memory_snapshot).run(
+            command,
+            cwd=ROOT.parent,
+            limits=StageLimits(
+                timeout_seconds=1800,
+                minimum_free_percent=8,
+                maximum_swap_growth_mb=swap_limit,
+                network_allowed=False,
+            ),
+        )
+    except StageWorkerError as exc:
+        raise RuntimeError(f"Shape MLX abortado por watchdog: {exc.reason_code}") from exc
+    if not raw_glb.is_file() or not report_path.is_file():
+        raise RuntimeError("Shape MLX worker terminó sin sus artefactos requeridos")
+    validate_glb_container(raw_glb)
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise RuntimeError("Reporte inválido del Shape worker") from exc
+    if (
+        not report.get("passed")
+        or report.get("provider") != "hunyuan3d-2.1-mlx"
+        or Path(report.get("output_glb", "")).resolve() != raw_glb.resolve()
+    ):
+        raise RuntimeError("Contrato inválido del Shape worker")
+    try:
+        import trimesh
+        mesh = trimesh.load(str(raw_glb), force="mesh")
+    except Exception as exc:
+        raise RuntimeError("Shape worker produjo una malla no cargable") from exc
+    return mesh, {"worker": report, "watchdog": watchdog, "raw_glb": str(raw_glb)}
 
 
 def decode_image_base64(image_base64: str) -> bytes:
@@ -1084,9 +1139,14 @@ def run_job(job_id: str, request: GenerateRequest):
                 "Referencia rechazada antes de iniciar MLX: "
                 + " ".join(input_analysis.get("actions") or ["Mejora el contraste y el encuadre."])
             )
-        # Weight loading is independent from CPU image isolation. Overlapping
-        # both shortens a cold first run without running Shape and Paint together.
-        pipeline_future = preload_executor.submit(get_pipeline)
+        # The experimental worker gives Metal allocations a process boundary.
+        # The resident path remains the default until it wins physical-Mac
+        # parity and latency trials on the same corpus.
+        use_shape_worker = isolated_shape_worker_enabled()
+        if not use_shape_worker:
+            # Weight loading is independent from CPU image isolation. Overlapping
+            # both shortens a cold first run without running Shape and Paint together.
+            pipeline_future = preload_executor.submit(get_pipeline)
         if cancelled():
             return
 
@@ -1097,8 +1157,9 @@ def run_job(job_id: str, request: GenerateRequest):
             return
 
         job.update({"progress": 15, "stage": "Cargando Hunyuan3D"})
-        pipeline = pipeline_future.result()
-        pipeline_future = None
+        if not use_shape_worker:
+            pipeline = pipeline_future.result()
+            pipeline_future = None
         mark_milestone("shape_weights_ready")
         if cancelled():
             return
@@ -1120,22 +1181,29 @@ def run_job(job_id: str, request: GenerateRequest):
             "steps": request.steps,
             "resolution": request.octree_resolution,
         })
-        mesh = extract_mesh(
-            pipeline(
-                str(prepared_path),
-                num_inference_steps=request.steps,
-                guidance_scale=request.guidance,
-                octree_resolution=request.octree_resolution,
-                progress_callback=shape_progress,
+        if use_shape_worker:
+            mesh, shape_worker_report = run_isolated_shape_worker(job_id, prepared_path, request)
+        else:
+            mesh = extract_mesh(
+                pipeline(
+                    str(prepared_path),
+                    num_inference_steps=request.steps,
+                    guidance_scale=request.guidance,
+                    octree_resolution=request.octree_resolution,
+                    progress_callback=shape_progress,
+                )
             )
-        )
         mark_milestone("shape_inference_complete")
         job.update({"progress": 76, "stage": "Volumen reconstruido"})
-        release_shape_pipeline(pipeline)
-        pipeline = None
-        settle_shape_memory()
+        if pipeline is not None:
+            release_shape_pipeline(pipeline)
+            pipeline = None
+            settle_shape_memory()
         if ledger is not None:
-            ledger.record_stage("shape", "passed", {"milestone": milestones.get("shape_inference_complete")})
+            ledger.record_stage("shape", "passed", {
+                "milestone": milestones.get("shape_inference_complete"),
+                "isolation": shape_worker_report if use_shape_worker else {"mode": "resident"},
+            })
         transition_ledger(job_id, "STAGE_PASSED", "shape_passed")
         if cancelled():
             return

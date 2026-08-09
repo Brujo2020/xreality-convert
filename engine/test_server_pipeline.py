@@ -57,7 +57,7 @@ class GetPipelineTests(unittest.TestCase):
         self.assertIn("dit_loader", constructor)
         self.assertIn("vae_loader", constructor)
         self.assertIn("progress_callback", generation)
-        self.assertEqual(server.ENGINE_VERSION, "19")
+        self.assertEqual(server.ENGINE_VERSION, "20")
 
     def test_reference_padding_matches_hunyuan_border_ratio(self):
         image = Image.new("RGBA", (100, 100), (0, 0, 0, 0))

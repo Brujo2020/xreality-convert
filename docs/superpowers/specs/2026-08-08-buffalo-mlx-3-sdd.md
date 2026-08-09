@@ -26,15 +26,27 @@ Implemented in this repository:
   restricted to managed job assets;
 - local-only Agentic model resolution: missing weights block the job instead of
   downloading during inference;
+- reusable isolated-stage supervisor now owns offline worker environment,
+  timeout, pressure/swap watchdog and graceful terminate/kill escalation for
+  Agentic Paint;
+- an opt-in disposable Shape MLX worker now emits a validated GLB and report,
+  then exits to release Python/Metal allocations before geometry and Paint;
+  its parent validates the output/provider contract and records watchdog
+  evidence in the immutable stage result;
+- a reproducible resident-versus-worker parity gate compares finite geometry,
+  vertices/faces, components, extents and latency with explicit thresholds;
+  it never substitutes structural parity for visual review or corpus evidence;
 - control-plane paths/state exposed through the job status API;
 - unit coverage for journal, contracts, safe GLB handling, semantic delta and
   offline model resolution.
 
-Still staged/target: disposable Shape worker process, persisted resume runner,
-Blender sandbox/canonical-render worker, human approval UI, regional material
-editor, actual typed edit executors, target-runtime probes, challenger arena and
-any consented cloud adapter. They remain intentionally unclaimed until their
-slice gates pass.
+Still staged/target: promotion of the opt-in Shape worker to the default path
+(it must first pass a real-Metal parity/latency trial; the expensive local E2E
+probe is explicitly gated), persisted resume
+runner, Blender sandbox/canonical-render worker, human
+approval UI, regional material editor, actual typed edit executors,
+target-runtime probes, challenger arena and any consented cloud adapter. They
+remain intentionally unclaimed until their slice gates pass.
 
 ## 1. Executive decision
 
@@ -614,7 +626,7 @@ This matrix prevents the SDD from presenting targets as existing behavior.
 |---|---|---|
 | semantic templates and part expectations | `engine/buffalo_strategy.py`, `engine/asset_director.py` | evidence-backed localization, stable part IDs and correction workflow |
 | assembly fingerprint and transactional simplification | `validate_assembly_preservation` and server fallback | semantic surface mapping, self-intersection/internal-wall gates and policy calibration |
-| Shape/Paint sequencing and cache cleanup | `engine/server.py`, Paint services and tests | disposable worker boundary, verified release, resumable checkpoints and event journal |
+| Shape/Paint sequencing and cache cleanup | `engine/server.py`, Paint services and tests | opt-in Shape worker boundary and verified release; default promotion, resumable checkpoints and event journal remain staged |
 | memory admission/watchdog for Agentic Paint | `engine/agentic_paint_service.py` | common resource governor for every heavy provider and chip-specific p95 registry |
 | native Paint/reference fidelity gates | `engine/reference_projection.py` | synchronized regional PBR confidence and protected-map edit diffs |
 | structural GLB/PBR validation | `engine/pbr_glb.py`, benchmark arena tests | safe untrusted parser, Khronos validator integration and adversarial asset corpus |
