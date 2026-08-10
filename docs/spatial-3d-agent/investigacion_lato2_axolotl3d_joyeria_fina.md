@@ -1,107 +1,99 @@
-# 💎 ESTUDIO DE JOYERÍA FINA: ARQUITECTURAS LATO.2 Y NVIDIA AXOLOTL3D
-## *Extracción Teórica, Desglose de Redes Neuronales y Síntesis para la Plataforma Xreality Convert & NTT Data (2026)*
+# 💎 ESTUDIO DE JOYERÍA FINA: DIAGRAMA NEURAL DE NVIDIA AXOLOTL3D Y LATO.2
+## *Desglose de Redes Neuronales, Flujo de Tensores y Síntesis para Xreality Convert & NTT Data (2026)*
 
 ---
 
-## 📌 Resumen Ejecutivo de la Investigación
+## 🎨 1. Análisis del Diagrama Neural de NVIDIA Axolotl3D
 
-En este informe de alta precisión se desglosan las dos investigaciones más revolucionarias del panorama 3D en 2026:
-1. **LATO.2 (LoHhhha / Long et al., arXiv:2607.10623):** Generación de mallas 3D factorizada mediante flujos desacoplados de Vértices (**V-Flow**) y Topología (**T-Flow**).
-2. **NVIDIA Axolotl3D (NVIDIA Spatial Intelligence Lab / Hu & Shugrina, ECCV 2026):** Framework 3D unificado multimodal con inferencia amodal de partes ocultas (oclusión), control de geometría por nubes de puntos parciales y edición por instrucciones.
+Basándonos en la arquitectura oficial revelada por el **NVIDIA Spatial Intelligence Lab (SIL)** para **Axolotl3D** (ECCV 2026):
+
+```
+                                  [NVIDIA AXOLOTL3D NEURAL FLOW]
+
+Input View(s) ──────► [ ❄️ DINOv2 ] ───(+)───► [ FFN ] ───(+)───┐
+                                       │                  │     │
+Camera Plücker ──────► [ Linear ] ─────┘                  │     ▼
+                                                          ├─► [ Condition Tokens ]
+Condition Points ───► [ ❄️ VecSetX ] ────────► [ FFN ] ───(+)───┤         │
+                                                          │     │         │ KV
+Visible Area Mask ──► [ Patchify & Flatten ] ─────────────┘     ▼         ▼
+                                                       [ Attention Mask ] ───┐
+                                                                             │
+Noisy Latent ────────────────────────────────────────► [ Hunyuan3D DiT ] ◄───┘
+                                                        ├── Self Attention
+                                                        └── Cross Attention
+                                                                 │
+                                                                 ▼
+                                                        [ ❄️ VAE Decoder ]
+                                                                 │
+                                                                 ▼
+                                                      [ Watertight 3D Mesh ]
+```
+
+### A. Componentes y Flujos de Tensores (Tensor Flows)
+1. **Ruta de Visión (Visual Path):**
+   * **Input View(s):** Imágenes multi-vista $I \in \mathbb{R}^{B \times H \times W \times 3}$.
+   * **DINOv2 Encoder (Frozen):** Extrae características semánticas densas $F_{dino} \in \mathbb{R}^{B \times N_{patches} \times D}$.
+   * **Camera Plücker Embeddings:** Codifica los rayos de la cámara (origen y dirección) en el espacio tridimensional:
+     $$P(r) = (o \times d, d) \in \mathbb{R}^6$$
+     Pasados por una capa `Linear`, se suman linealmente a las características de DINOv2.
+
+2. **Ruta de Geometría y Oclusión (Geometric & Amodal Path):**
+   * **Condition Points:** Nube de puntos 3D parciales $X_{pts} \in \mathbb{R}^{B \times N \times 3}$.
+   * **VecSetX Encoder (Frozen):** Red de conjuntos de vectores que procesa puntos 3D sin orden específico.
+   * **Visible Area Mask(s):** Máscara binaria que delimita qué partes son visibles y cuáles están ocluidas. Se transforma mediante `Patchify & Flatten` para formar la **Attention Mask** (Image Mask + Points Mask).
+
+3. **Núcleo Generativo DiT y Decodificación:**
+   * **Hunyuan3D DiT (Diffusion Transformer):** Recibe el *Noisy Latent* y procesa en paralelo:
+     * **Self Attention:** Modela relaciones espaciales entre tokens de la malla 3D.
+     * **Cross Attention:** Proyecta la información de `Condition Tokens` (Key/Value) utilizando la `Attention Mask` para guiar la reconstrucción de zonas ocluidas.
+   * **VAE Decoder (Frozen):** Decodifica los latentes limpios en mallas 3D herméticas (*watertight meshes*).
 
 ---
 
-## 🧬 1. LATO.2: Generación Factorizada de Mallas (V-Flow & T-Flow)
+## 🧬 2. LATO.2: Generación Factorizada (V-Flow & T-Flow)
 
-### A. El Problema Histórico
-Los modelos 3D convencionales (como LRM, CRM o Tripo 1.0) intentaban modelar las posiciones de los vértices y la conectividad de las aristas/caras en un único espacio latente acoplado. Esto provocaba **vértices flotantes (*drifting vertices*)**, **agujeros en las superficies** y una densidad de polígonos caótica e incontrolable.
-
-### B. La Solución Factorizada de LATO.2
-LATO.2 desacopla el proceso de generación en dos etapas continuas y coordinadas:
+Complementando la inferencia amodal de Axolotl3D, **LATO.2** resuelve la retopología y el control estricto de polígonos:
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│  Scaffold Voxelizado Grueso (Estructura de Partes)     │
-└──────────────────────────┬─────────────────────────────┘
-                           │
-                           ▼
-┌────────────────────────────────────────────────────────┐
 │  STAGE 1: V-Flow (Vertex Flow Matching)                │
-│  - Genera posiciones de vértices con precisión sub-voxel│
-│  - Permite prescribir el recuento exacto: 200 - 5.000  │
+│  - Vértices 3D con precisión sub-voxel                 │
+│  - Presupuesto exacto prescrito: 200 a 5.000 vértices  │
 └──────────────────────────┬─────────────────────────────┘
                            │
                            ▼
 ┌────────────────────────────────────────────────────────┐
 │  STAGE 2: T-Flow (Topology Flow Matching)              │
-│  - Predice la conectividad (caras/aristas) sobre los   │
-│    vértices generados en el Stage 1                    │
-│  - Re-calcula la topología automáticamente tras editar│
-└──────────────────────────┬─────────────────────────────┘
-                           │
-                           ▼
-┌────────────────────────────────────────────────────────┐
-│  Malla Low-Poly Limpia con Topología Adaptativa        │
-└────────────────────────────────────────────────────────┘
-```
-
-### C. Características Clave de LATO.2 para Nuestro Pipeline Low-Poly (70%)
-1. **Presupuesto Exacto de Vértices:** Se puede solicitar explícitamente un recuento de 500, 2.000 o 5.000 vértices para Meta Quest 3 o WebXR.
-2. **Generación por Partes (Part-wise Generation):** Al particionar el scaffold, cada sub-pieza se sintetiza utilizando toda la capacidad del latente, logrando una resolución geométrica superior en ensamblajes industriales.
-3. **Consumo Eficiente de VRAM:** Funciona con solo **8 GB de VRAM**, haciéndolo ideal para ejecución local en Apple Silicon / GPUs de consumo.
-
----
-
-## 🐊 2. NVIDIA Axolotl3D: Framework Multimodal Unificado
-
-### A. La Matriz de Tareas Unificadas
-Como muestra la investigación del **NVIDIA Spatial Intelligence Lab (SIL)** presentada en **ECCV 2026**, Axolotl3D supera a todos los modelos competidores al unificar las 4 grandes tareas 3D en un solo modelo de difusión:
-
-| Método | Multi-View | Occlusion (Amodal) | Geometry-Control | Editing |
-| :--- | :---: | :---: | :---: | :---: |
-| Amodal3R | ❌ | ✅ | ❌ | ❌ |
-| SAM3D | ❌ | ✅ | ❌ | ❌ |
-| Hunyuan3D-Omni | ❌ | ❌ | ✅ | ❌ |
-| ShapeR | ✅ | ✅ | ✅ | ❌ |
-| GENA3D | ✅ | ✅ | ✅ | ❌ |
-| VecSet-Edit | ❌ | ❌ | ❌ | ✅ |
-| 👑 **NVIDIA Axolotl3D** | ✅ | ✅ | ✅ | ✅ |
-
-### B. Mecanismos Arquitectónicos de Axolotl3D
-1. **Inferencia Amodal (Manejo de Oclusiones):** Utiliza máscaras de visibilidad (*visibility masks*) para predecir e inferir las superficies y partes traseras ocultas detrás de un objeto en una foto 2D.
-2. **Anclas Geométricas por Nubes de Puntos Parciales (Geometry-Control):** Si se escanea un objeto parcialmente, Axolotl3D usa la nube de puntos como "ancla estructural" fijando las dimensiones reales.
-3. **Edición Guiada por Instrucciones:** Permite sustituir o transformar piezas específicas sobre escenas o Gaussian Splats 3D manteniendo el alineamiento de cámara y parámetros del modelo.
-
----
-
-## 🏛️ 3. Síntesis e Integración en la Arquitectura Xreality Convert & NTT Data
-
-La fusión de **LATO.2** y **NVIDIA Axolotl3D** complementa de forma natural nuestro ecosistema **Dual-Engine (Meshy Cloud API + Local MLX)**:
-
-```
-[Entrada: Imagen 2D / Prompt / Escaneo Parcial]
-                     │
-                     ▼
-┌────────────────────────────────────────────────────────┐
-│  MODO A: 70% Standalone VR (Low-Poly Limpio)           │
-│  - Geometría V-Flow + T-Flow inspirada en LATO.2       │
-│  - Retopología Quad + Compresión KTX2 / Draco          │
-│  - Motor Cloud: Meshy API v6 (5cr Cheap Preview)       │
-└────────────────────────────────────────────────────────┘
-
-┌────────────────────────────────────────────────────────┐
-│  MODO B: 30% Digital Twins & PC-VR (NVIDIA Omniverse)  │
-│  - Reconstrucción Amodal por Oclusión (Axolotl3D Spec) │
-│  - Edición de Partes y Envolventes V-HACD              │
-│  - Motor Local / High Poly: TRELLIS.2 / Rodin 3.0      │
-│  - Exportación: OpenUSD (.usda / .usdz)                │
+│  - Predice la conectividad cuadrangular (Quads/Tris)   │
+│  - Malla limpia lista para VR Standalone (Quest 3)     │
 └────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 📊 4. Conclusión Técnica
+## 🏆 3. La Estrategia Híbrida "10 de 10" para Campeonar en 2026
 
-* **LATO.2** aporta la solución teórica definitiva para la **retopología y control de vértices Low-Poly en local**.
-* **NVIDIA Axolotl3D** aporta el estándar de **reconstrucción amodal (completar partes ocultas) y edición localizada**.
-* Ambos avances están completamente alineados con el pipeline **Dual-Engine** implementado en el software `Xreality Convert` (`ollama-image-studio`).
+```
+                    ┌──────────────────────────────────────────────┐
+                    │      XREALITY CONVERT 3D AGENTIC SYSTEM      │
+                    └──────────────────────┬───────────────────────┘
+                                           │
+             ┌─────────────────────────────┴─────────────────────────────┐
+             ▼                                                           ▼
+┌─────────────────────────────────────────┐  ┌─────────────────────────────────────────┐
+│ MODO LOCAL OFFLINE (Campeón 8GB VRAM)   │  │ MODO CLOUD HYBRID (Meshy API v6)        │
+│ ─────────────────────────────────────── │  │ ─────────────────────────────────────── │
+│ 1. NVIDIA Axolotl3D: Inferencia amodal  │  │ 1. Cheap Preview Filter (5 créditos)    │
+│    de partes ocultas y oclusión.        │  │    Borrador ultrarrápido en la nube.    │
+│ 2. LATO.2: V-Flow (posicionamiento de   │  │ 2. Refine PBR 8K (20 créditos)          │
+│    vértices) + T-Flow (topología quad). │  │    Texturizado De-lit profesional.      │
+│ 3. MLX Hunyuan3D: Difusión local.       │  │ 3. Quad Remesh & Exportación OpenUSD.   │
+└─────────────────────────────────────────┘  └─────────────────────────────────────────┘
+```
+
+---
+
+## 📌 Estado de Descarga de Checkpoints LATO.2 Local
+
+Los pesos del modelo LATO.2 están descargándose en segundo plano en `tmp/LATO.2/ckpt/` desde Hugging Face (`0x4c48/LATO.2`) para ejecutar las pruebas locales tan pronto finalice la descarga.
