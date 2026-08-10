@@ -258,11 +258,127 @@ export default function PromptPanel({
   const [showApiKey, setShowApiKey] = useState(false);
   const isMeshy = engineProvider === 'meshy';
   const processing = generating || installingEngine || installingModel;
-          </div>
-          <span className="h-2 w-2 rounded-full bg-cyan-400 shadow-[0_0_18px_#52d7ff]" />
+
+  const update = (key, value) => setParams((current) => ({ ...current, [key]: value }));
+
+  const blocked = isMeshy
+    ? !meshyApiKey || (!image3dInput && !prompt.trim())
+    : mode === 'image3d'
+    ? !image3dInput || !hunyuanUp
+    : mode === 'stl'
+    ? !prompt.trim() || !stlModel
+    : !prompt.trim() || !imageModelAvailable;
+
+  const actionLabel = isMeshy
+    ? (meshyMode === 'preview' ? '⚡ Generar Preview Cheap (5cr)' : '🚀 Refinar PBR (20cr)')
+    : mode === 'image3d'
+    ? 'Convertir imagen a 3D'
+    : mode === 'stl'
+    ? 'Generar código y malla'
+    : 'Generar imagen de referencia';
+
+  return (
+    <div className="flex h-full flex-col gap-4 overflow-y-auto p-4 select-none">
+      {/* Selector de Motor: Local MLX vs Meshy Cloud API */}
+      <Section eyebrow="Motor 3D" title="Proveedor de Procesamiento">
+        <div className="grid grid-cols-2 gap-1.5 rounded-xl border border-white/5 bg-black/20 p-1.5">
+          <button
+            type="button"
+            onClick={() => setEngineProvider('local')}
+            className={`rounded-lg px-3 py-2 text-center transition ${!isMeshy ? 'bg-sky-500/20 text-white border border-sky-400/30 shadow-md font-semibold' : 'text-slate-400 hover:text-slate-200'}`}
+          >
+            <span className="block text-[11px]">🖥️ Local (Hunyuan MLX)</span>
+            <span className="block font-mono text-[8px] text-sky-300">Privado · Coste $0</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setEngineProvider('meshy')}
+            className={`rounded-lg px-3 py-2 text-center transition ${isMeshy ? 'bg-indigo-500/25 text-white border border-indigo-400/40 shadow-md font-semibold' : 'text-slate-400 hover:text-slate-200'}`}
+          >
+            <span className="block text-[11px]">☁️ Meshy Cloud API</span>
+            <span className="block font-mono text-[8px] text-indigo-300">v6 · Quad Low-Poly</span>
+          </button>
         </div>
-        <ModeSelector mode={mode} setMode={setMode} disabled={processing} />
-      </div>
+      </Section>
+
+      {/* Tarjeta de Configuración Meshy API */}
+      {isMeshy && (
+        <Section eyebrow="Meshy API Cloud Config" title="Parámetros y Clave de API">
+          <div className="flex flex-col gap-3">
+            <div>
+              <label className="mb-1 block text-[10px] font-medium text-slate-300">Meshy API Key</label>
+              <div className="flex gap-1.5">
+                <input
+                  type={showApiKey ? 'text' : 'password'}
+                  placeholder="sk-..."
+                  value={meshyApiKey}
+                  onChange={(e) => setMeshyApiKey(e.target.value)}
+                  className="field-modern min-w-0 flex-1 font-mono text-xs"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowApiKey((v) => !v)}
+                  className="rounded-xl border border-sky-300/15 bg-white/5 px-2.5 text-[10px] text-slate-300 hover:bg-white/10"
+                >
+                  {showApiKey ? '🙈' : '👁️'}
+                </button>
+              </div>
+            </div>
+
+            {/* Meshy Pipeline Mode */}
+            <div>
+              <label className="mb-1 block text-[10px] font-medium text-slate-300">Modo de Tarea Meshy</label>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setMeshyMode('preview')}
+                  className={`rounded-xl border p-2 text-left transition ${meshyMode === 'preview' ? 'border-amber-400/40 bg-amber-400/10 text-white' : 'border-white/5 bg-black/10 text-slate-400'}`}
+                >
+                  <span className="block text-[10px] font-semibold">⚡ Cheap Preview</span>
+                  <span className="block font-mono text-[8px] text-amber-300">5 créditos · Borrador</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMeshyMode('refine')}
+                  className={`rounded-xl border p-2 text-left transition ${meshyMode === 'refine' ? 'border-indigo-400/40 bg-indigo-400/10 text-white' : 'border-white/5 bg-black/10 text-slate-400'}`}
+                >
+                  <span className="block text-[10px] font-semibold">🚀 Refine PBR</span>
+                  <span className="block font-mono text-[8px] text-indigo-300">20 créditos · PBR 8K</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Topology & Polycount */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="mb-1 block text-[10px] font-medium text-slate-300">Topología</label>
+                <select
+                  value={meshyTopology}
+                  onChange={(e) => setMeshyTopology(e.target.value)}
+                  className="field-modern w-full text-xs"
+                >
+                  <option value="quad">Quad (Clean Low-Poly)</option>
+                  <option value="triangle">Triangle (Decimado)</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] font-medium text-slate-300">Target Polycount</label>
+                <select
+                  value={meshyTargetPolycount}
+                  onChange={(e) => setMeshyTargetPolycount(Number(e.target.value))}
+                  className="field-modern w-full text-xs font-mono"
+                >
+                  <option value={5000}>5.000 (Low Poly VR)</option>
+                  <option value={12000}>12.000 (Juegos Std)</option>
+                  <option value={30000}>30.000 (Hero Asset)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </Section>
+      )}
+
+      <ModeSelector mode={mode} setMode={setMode} disabled={processing} />
 
       <UseCasePicker value={useCase} onChange={onSelectUseCase} disabled={processing} />
 

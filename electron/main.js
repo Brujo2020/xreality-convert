@@ -1416,7 +1416,7 @@ ipcMain.handle('meshy:cancel', async () => {
   return { ok: true };
 });
 
-// --- Window ----------------------------------------------------------------
+let mainWindow = null;
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -1434,6 +1434,11 @@ function createWindow() {
       contextIsolation: true,
       sandbox: true,
     },
+  });
+
+  mainWindow = win;
+  win.on('closed', () => {
+    mainWindow = null;
   });
 
   if (isDev) {
