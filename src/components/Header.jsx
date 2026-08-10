@@ -26,6 +26,13 @@ export default function Header({
   const state = processing ? 'Procesando' : localReady ? 'Listo' : 'Preparando';
   const tone = processing ? 'working' : localReady ? 'ready' : 'standby';
   const dot = processing ? 'bg-amber-300 text-amber-300' : localReady ? 'bg-emerald-300 text-emerald-300' : 'bg-sky-300 text-sky-300';
+  const detail = processing
+    ? progress?.label || (isMeshy ? 'Meshy Cloud API activa' : 'Pipeline local activo')
+    : isMeshy
+    ? 'Meshy API v6 · Cloud Engine'
+    : localReady
+    ? mode === 'image3d' ? 'Buffalo MLX · Shape · Paint · PBR' : 'Servicios locales disponibles'
+    : mode === 'image3d' ? 'Preparando motor MLX' : 'Comprobando servicios locales';
 
   return (
     <header className="app-header header-glass relative z-20 flex h-[64px] shrink-0 items-center justify-between border-b border-white/10 px-6 select-none backdrop-blur-2xl">

@@ -256,8 +256,21 @@ export default function PromptPanel({
 }) {
   const [advanced, setAdvanced] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
+  const [imageInfo, setImageInfo] = useState(null);
   const isMeshy = engineProvider === 'meshy';
   const processing = generating || installingEngine || installingModel;
+
+  useEffect(() => {
+    if (!image3dInput?.base64) {
+      setImageInfo(null);
+      return;
+    }
+    const img = new Image();
+    img.src = `data:image/png;base64,${image3dInput.base64}`;
+    img.onload = () => {
+      setImageInfo({ width: img.naturalWidth, height: img.naturalHeight });
+    };
+  }, [image3dInput?.base64]);
 
   const update = (key, value) => setParams((current) => ({ ...current, [key]: value }));
 
