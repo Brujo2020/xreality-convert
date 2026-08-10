@@ -661,6 +661,13 @@ export default function App() {
       setResult({ ...entry, stl });
     } else {
       setParams({ width: entry.width, height: entry.height, steps: entry.steps, seed: entry.seed });
+      if (entry.image) {
+        setImage3dInput({
+          name: `referencia-${entry.id}.png`,
+          base64: entry.image,
+          dataUrl: `data:image/png;base64,${entry.image}`,
+        });
+      }
       setResult(entry);
     }
   }, []);
@@ -742,6 +749,7 @@ export default function App() {
       dataUrl: `data:image/png;base64,${result.image}`,
     });
     setMode('image3d');
+    setResult(null);
     setError(null);
   }, [result]);
 
