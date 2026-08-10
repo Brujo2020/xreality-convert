@@ -67,6 +67,8 @@ contextBridge.exposeInMainWorld('hunyuan', {
 
   // Native image picker -> { name, dataUrl, base64 } | null
   pickImage: () => ipcRenderer.invoke('hunyuan:pickImage'),
+  admitMultiView: (params) => ipcRenderer.invoke('hunyuan:admitMultiView', params),
+  multiViewStatus: () => ipcRenderer.invoke('hunyuan:multiViewStatus'),
 
   // Convert a generated GLB to a printable STL -> { ok, stl_path, dims_mm, watertight }
   convertStl: (args) => ipcRenderer.invoke('hunyuan:convertStl', args),
@@ -80,3 +82,12 @@ contextBridge.exposeInMainWorld('hunyuan', {
   // Save a GLB to ~/Documents/OllamaImageStudio/
   saveGlb: (args) => ipcRenderer.invoke('hunyuan:saveGlb', args),
 });
+
+// Meshy AI Cloud API Integration
+contextBridge.exposeInMainWorld('meshy', {
+  getApiKey: () => ipcRenderer.invoke('meshy:getApiKey'),
+  saveApiKey: (apiKey) => ipcRenderer.invoke('meshy:saveApiKey', apiKey),
+  generate3D: (params) => ipcRenderer.invoke('meshy:generate3D', params),
+  cancel: () => ipcRenderer.invoke('meshy:cancel'),
+});
+

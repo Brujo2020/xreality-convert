@@ -193,37 +193,71 @@ function QuickDeliverySelector({ asset, setAsset, setSteps3d, disabled }) {
   );
 }
 
-export default function PromptPanel(props) {
-  const {
-    connected, useCase, onSelectUseCase, modelCategory, onSelectModelCategory, mode, setMode, imageModel, imageModels, setImageModel,
-    imageModelAvailable, installingModel, onInstallImageModel, stlModels, stlModel, setStlModel, prompt, setPrompt,
-    params, setParams, image3dInput, onPickImage, onDropImage, steps3d, setSteps3d, guidance3d, setGuidance3d,
-    backgroundMode, setBackgroundMode, subjectPadding, setSubjectPadding, asset,
-    setAsset, analysis, analysisLoading, hunyuanUp, installingEngine, onInstallEngine, generating, progress,
-    onGenerate, onCancel, randomSeed,
-  } = props;
+export default function PromptPanel({
+  connected,
+  engineProvider = 'local',
+  setEngineProvider,
+  meshyApiKey,
+  setMeshyApiKey,
+  meshyMode,
+  setMeshyMode,
+  meshyTopology,
+  setMeshyTopology,
+  meshyTargetPolycount,
+  setMeshyTargetPolycount,
+  meshyPreviewTaskId,
+  useCase,
+  onSelectUseCase,
+  modelCategory,
+  onSelectModelCategory,
+  mode,
+  setMode,
+  imageModel,
+  imageModels,
+  setImageModel,
+  imageModelAvailable,
+  installingModel,
+  onInstallImageModel,
+  stlModels,
+  stlModel,
+  setStlModel,
+  prompt,
+  setPrompt,
+  params,
+  setParams,
+  image3dInput,
+  multiViewInputs,
+  multiViewBackend,
+  onPickImage,
+  onPickMultiView,
+  onDropImage,
+  steps3d,
+  setSteps3d,
+  guidance3d,
+  setGuidance3d,
+  backgroundMode,
+  setBackgroundMode,
+  subjectPadding,
+  setSubjectPadding,
+  stlMm,
+  setStlMm,
+  analysis,
+  analysisLoading,
+  asset,
+  setAsset,
+  hunyuanUp,
+  installingEngine,
+  onInstallEngine,
+  generating,
+  progress,
+  onGenerate,
+  onCancel,
+  randomSeed,
+}) {
   const [advanced, setAdvanced] = useState(false);
-  const [showAnalysis, setShowAnalysis] = useState(false);
-  const [imageInfo, setImageInfo] = useState(null);
-  const update = (key, value) => setParams((current) => ({ ...current, [key]: value }));
+  const [showApiKey, setShowApiKey] = useState(false);
+  const isMeshy = engineProvider === 'meshy';
   const processing = generating || installingEngine || installingModel;
-  const blocked = mode === 'image3d'
-    ? !hunyuanUp || !image3dInput
-    : !connected || (mode === 'image' ? !imageModelAvailable : !stlModels.length);
-
-  const actionLabel = mode === 'image3d'
-    ? 'Construir activo 3D'
-    : mode === 'stl'
-    ? 'Generar malla 3D'
-    : 'Generar imagen';
-
-  return (
-    <div className="scroll-dark flex h-full flex-col gap-4 overflow-y-auto px-4 pb-5 pt-4">
-      <div className="px-1">
-        <div className="mb-3 flex items-center justify-between">
-          <div>
-            <p className="font-mono text-[9px] uppercase tracking-[0.22em] text-sky-400">Pipeline creativo</p>
-            <h1 className="mt-1 text-lg font-semibold tracking-tight text-white">Crear. Convertir. Entregar.</h1>
           </div>
           <span className="h-2 w-2 rounded-full bg-cyan-400 shadow-[0_0_18px_#52d7ff]" />
         </div>
@@ -295,6 +329,26 @@ export default function PromptPanel(props) {
             placeholder={mode === 'stl' ? 'Describe una pieza, equipo o activo industrial…' : 'Describe una referencia limpia, centrada y lista para convertir…'}
             className="field-modern scroll-dark resize-none leading-relaxed"
           />
+        )}
+        {mode === 'image3d' && (
+          <div className="mt-3 rounded-xl border border-cyan-300/10 bg-cyan-300/[0.03] p-2.5">
+            <p className="font-mono text-[8px] uppercase tracking-[0.15em] text-cyan-200">Vistas para Shape multi-vista</p>
+            <p className="mt-1 text-[9px] leading-relaxed text-slate-500">Añade fotos reales y etiquetadas. Las vistas auxiliares nunca se consideran evidencia para MASTER por sí solas.</p>
+            {multiViewBackend?.available ? (
+              <p className="mt-1 text-[8px] text-emerald-200">Backend Shape multi-vista listo: las cámaras admitidas se usarán en la reconstrucción.</p>
+            ) : multiViewBackend?.state === 'installed_not_certified' ? (
+              <p className="mt-1 text-[8px] leading-relaxed text-amber-200/80">Pesos Hunyuan3D-2mv instalados. El backend PyTorch/MPS permanece bloqueado hasta completar la certificación física en este Mac; estas fotos se conservarán como evidencia, pero Shape seguirá usando una sola referencia.</p>
+            ) : (
+              <p className="mt-1 text-[8px] leading-relaxed text-amber-200/80">Organización y validación activas. No se encontró un backend Shape multi-vista completo; estas fotos se conservarán como evidencia, pero no se enviarán a Shape.</p>
+            )}
+            <div className="mt-2 grid grid-cols-3 gap-1.5">
+              {['front', 'right', 'back', 'left', 'top', 'bottom'].map((viewId) => (
+                <button key={viewId} type="button" disabled={processing} onClick={() => onPickMultiView?.(viewId)} className={`rounded-lg border px-2 py-2 text-left font-mono text-[8px] uppercase ${multiViewInputs[viewId] ? 'border-emerald-300/30 bg-emerald-300/10 text-emerald-100' : 'border-white/10 bg-black/10 text-slate-400 hover:border-cyan-300/30'}`}>
+                  {multiViewInputs[viewId] ? `✓ ${viewId}` : `+ ${viewId}`}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
         {mode === 'image3d' && imageInfo && (
           <div className="mt-2 flex flex-wrap gap-1.5">

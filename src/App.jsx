@@ -79,6 +79,8 @@ export default function App() {
 
   // --- Image -> 3D (Hunyuan, via local Python server) ---
   const [image3dInput, setImage3dInput] = useState(null); // { dataUrl, base64, name }
+  const [multiViewInputs, setMultiViewInputs] = useState({});
+  const [multiViewBackend, setMultiViewBackend] = useState(null);
   const [steps3d, setSteps3d] = useState(30);
   const [guidance3d, setGuidance3d] = useState(MODEL_CATEGORIES.industrial.guidance);
   const [backgroundMode, setBackgroundMode] = useState('auto');
@@ -88,6 +90,14 @@ export default function App() {
   const [hunyuanUp, setHunyuanUp] = useState(false);
   const [installingEngine, setInstallingEngine] = useState(false);
   const [installingModel, setInstallingModel] = useState(false);
+
+  // --- Motor Selector & Meshy API Cloud ---
+  const [engineProvider, setEngineProvider] = useState('local'); // 'local' | 'meshy'
+  const [meshyApiKey, setMeshyApiKey] = useState('');
+  const [meshyMode, setMeshyMode] = useState('preview'); // 'preview' | 'refine'
+  const [meshyTopology, setMeshyTopology] = useState('quad');
+  const [meshyTargetPolycount, setMeshyTargetPolycount] = useState(12000);
+  const [meshyPreviewTaskId, setMeshyPreviewTaskId] = useState('');
 
   // --- Generation state ---
   const [generating, setGenerating] = useState(false);
@@ -100,6 +110,15 @@ export default function App() {
   // --- Gallery ---
   const [history, setHistory] = useState([]);
   const [historyOpen, setHistoryOpen] = useState(false);
+
+  useEffect(() => {
+    if (window.meshy?.getApiKey) {
+      window.meshy.getApiKey().then((key) => {
+        if (key) setMeshyApiKey(key);
+      });
+    }
+  }, []);
+
 
   const hasInitStlModel = useRef(false);
   const hasInitImageModel = useRef(false);
@@ -179,6 +198,16 @@ export default function App() {
       }
     }
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    const inspect = async () => {
+      const status = await window.hunyuan.multiViewStatus?.();
+      if (active && status) setMultiViewBackend(status);
+    };
+    inspect();
+    return () => { active = false; };
+  }, [hunyuanUp]);
 
   useEffect(() => {
     checkStatus();
@@ -272,19 +301,103 @@ export default function App() {
 
   // --- Generate (branches on mode) ------------------------------------------
   const handleGenerate = useCallback(async () => {
+    // --- Meshy Cloud API Mode ---
+    if (engineProvider === 'meshy') {
+      if (!image3dInput && !prompt.trim()) {
+        setError('Selecciona una imagen o escribe una dirección creativa para generar con Meshy API.');
+        return;
+      }
+      if (!meshyApiKey) {
+        setError('Ingresa tu API Key de Meshy en el panel de configuración.');
+        return;
+      }
+      setError(null);
+      setGenerating(true);
+      setProgress({ percent: 1, label: 'Enviando solicitud a Meshy Cloud API…', remaining: null });
+
+      let res;
+      try {
+        res = await window.meshy.generate3D({
+          apiKey: meshyApiKey,
+          mode: meshyMode,
+          prompt: prompt.trim() || image3dInput?.name || 'Game ready asset',
+          imageBase64: image3dInput?.base64,
+          preview_task_id: meshyMode === 'refine' ? meshyPreviewTaskId : undefined,
+          art_style: 'realistic',
+          topology: meshyTopology,
+          target_polycount: meshyTargetPolycount,
+          originAt: 'bottom',
+          autoSize: true,
+          removeLighting: true,
+        });
+      } catch (genError) {
+        setGenerating(false);
+        setError(`Error en Meshy Cloud API: ${genError?.message || genError}`);
+        return;
+      }
+
+      if (!res.ok) {
+        setGenerating(false);
+        setError(res.error || 'Generación fallida en Meshy Cloud.');
+        return;
+      }
+
+      setProgress({ percent: 100, label: 'Activo 3D Meshy completado', remaining: 0 });
+      setGenerating(false);
+
+      if (res.mode === 'preview' && res.taskId) {
+        setMeshyPreviewTaskId(res.taskId);
+      }
+
+      const entry = {
+        id: `${Date.now()}-meshy`,
+        type: 'glb',
+        glbBase64: res.glbBase64,
+        glbPath: res.glbPath,
+        faces: res.faces,
+        duration: res.duration,
+        textured: true,
+        profile: meshyTopology === 'quad' ? 'lowpoly' : asset.profile,
+        targetFaces: meshyTargetPolycount,
+        prompt: prompt.trim() || image3dInput?.name || 'Meshy Asset',
+        inputDataUrl: image3dInput?.dataUrl,
+        model: `Meshy API v6 (${res.mode})`,
+        provider: 'meshy',
+        createdAt: Date.now(),
+        filePath: null,
+      };
+
+      setResult(entry);
+      const { glbBase64, inputDataUrl, ...light } = entry;
+      persistHistory([light, ...history].slice(0, MAX_HISTORY));
+      return;
+    }
+
     // --- Image -> 3D mode (Hunyuan, no prompt) ---
     if (mode === 'image3d') {
+
       if (!image3dInput) {
         setError('Selecciona una imagen de referencia.');
         return;
+      }
+      const views = [{ viewId: 'front', base64: image3dInput.base64 }, ...Object.entries(multiViewInputs).map(([viewId, image]) => ({ viewId, base64: image.base64 }))];
+      if (views.length > 1) {
+        const admission = await window.hunyuan.admitMultiView({ views, profile: asset.profile });
+        if (!admission.ok || !admission.admission?.passed) {
+          setError(admission.error || 'Completa las seis vistas antes de solicitar la ruta multi-vista.');
+          return;
+        }
       }
       setError(null);
       setGenerating(true);
       setProgress({ percent: 1, label: 'Verificando motor local…', remaining: null });
       let res;
       try {
+        const multiViewImages = Object.fromEntries(Object.entries(multiViewInputs).map(([viewId, image]) => [viewId, image.base64]));
         res = await window.hunyuan.generate3D({
           imageBase64: image3dInput.base64,
+          multiViewImages,
+          useMultiviewShape: views.length === 6 && multiViewBackend?.available === true,
           steps: steps3d,
           octree: asset.octree,
           texture: asset.texture,
@@ -432,6 +545,8 @@ export default function App() {
     stlModel,
     imageModel,
     image3dInput,
+    multiViewInputs,
+    multiViewBackend,
     steps3d,
     asset,
     modelCategory,
@@ -450,6 +565,10 @@ export default function App() {
   // --- Save (branches on type) ----------------------------------------------
   const handleSave = useCallback(async () => {
     if (!result) return null;
+    if (result.type === 'glb' && ['atencion', 'critico'].includes(result.qualityLevel)) {
+      setError('La entrega requiere revisión; no se puede guardar este GLB todavía.');
+      return null;
+    }
     let filePath;
     if (result.type === 'glb') {
       filePath = await window.hunyuan.saveGlb({
@@ -479,8 +598,8 @@ export default function App() {
   // to 60mm) then save it to ~/Documents/OllamaImageStudio/.
   const handleSaveStl3d = useCallback(async () => {
     if (!result || result.type !== 'glb') return null;
-    if (result.qualityLevel === 'critico') {
-      setError('La calidad del modelo es crítica; corrige la entrada antes de exportar STL.');
+    if (['atencion', 'critico'].includes(result.qualityLevel)) {
+      setError('La calidad requiere revisión; añade vistas reales o corrige la entrada antes de exportar STL.');
       return null;
     }
     const conv = await window.hunyuan.convertStl({
@@ -500,8 +619,8 @@ export default function App() {
 
   const handleSaveOpenUsd = useCallback(async () => {
     if (!result || result.type !== 'glb') return null;
-    if (result.qualityLevel === 'critico') {
-      setError('La calidad del modelo es crítica; corrige la entrada antes de exportar OpenUSD.');
+    if (['atencion', 'critico'].includes(result.qualityLevel)) {
+      setError('La calidad requiere revisión; añade vistas reales o corrige la entrada antes de exportar OpenUSD.');
       return null;
     }
     const converted = await window.hunyuan.convertOpenUsd({ glbPath: result.glbPath });
@@ -564,6 +683,12 @@ export default function App() {
       setError(null);
     };
     reader.readAsDataURL(file);
+  }, []);
+
+  const handlePickMultiView = useCallback(async (viewId) => {
+    const image = await window.hunyuan.pickImage();
+    if (!image) return;
+    setMultiViewInputs((current) => ({ ...current, [viewId]: image }));
   }, []);
 
   const handleInstallEngine = useCallback(async () => {
@@ -664,6 +789,8 @@ export default function App() {
         status={status}
         hunyuanUp={hunyuanUp}
         mode={mode}
+        engineProvider={engineProvider}
+        onSelectEngineProvider={setEngineProvider}
         processing={processing}
         progress={progress}
         historyCount={history.length}
@@ -677,6 +804,20 @@ export default function App() {
         <aside className="control-rail workspace-window w-[356px] shrink-0 overflow-hidden rounded-[22px]">
           <PromptPanel
             connected={status.connected}
+            engineProvider={engineProvider}
+            setEngineProvider={setEngineProvider}
+            meshyApiKey={meshyApiKey}
+            setMeshyApiKey={(key) => {
+              setMeshyApiKey(key);
+              window.meshy?.saveApiKey(key);
+            }}
+            meshyMode={meshyMode}
+            setMeshyMode={setMeshyMode}
+            meshyTopology={meshyTopology}
+            setMeshyTopology={setMeshyTopology}
+            meshyTargetPolycount={meshyTargetPolycount}
+            setMeshyTargetPolycount={setMeshyTargetPolycount}
+            meshyPreviewTaskId={meshyPreviewTaskId}
             useCase={useCase}
             onSelectUseCase={handleSelectUseCase}
             modelCategory={modelCategory}
@@ -697,7 +838,10 @@ export default function App() {
             params={params}
             setParams={setParams}
             image3dInput={image3dInput}
+            multiViewInputs={multiViewInputs}
+            multiViewBackend={multiViewBackend}
             onPickImage={handlePickImage}
+            onPickMultiView={handlePickMultiView}
             onDropImage={handleDropImage}
             steps3d={steps3d}
             setSteps3d={setSteps3d}
@@ -723,6 +867,7 @@ export default function App() {
             randomSeed={randomSeed}
           />
         </aside>
+
 
         {/* Center: result */}
         <main className="result-stage workspace-window min-w-0 flex-1 overflow-hidden rounded-[22px]">
