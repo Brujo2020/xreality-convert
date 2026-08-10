@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ArrowRight,
   Armchair,
@@ -256,6 +256,7 @@ export default function PromptPanel({
 }) {
   const [advanced, setAdvanced] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
+  const [showAnalysis, setShowAnalysis] = useState(false);
   const [imageInfo, setImageInfo] = useState(null);
   const isMeshy = engineProvider === 'meshy';
   const processing = generating || installingEngine || installingModel;

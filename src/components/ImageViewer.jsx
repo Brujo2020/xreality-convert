@@ -16,8 +16,8 @@ import {
 import { USE_CASES } from '../lib/useCases.js';
 import { XR_PROFILES, profileAudit } from '../lib/xrProfiles.js';
 
-const StlViewer = lazy(() => import('./StlViewer.jsx'));
-const GltfViewer = lazy(() => import('./GltfViewer.jsx'));
+import StlViewer from './StlViewer.jsx';
+import GltfViewer from './GltfViewer.jsx';
 
 function ViewerFallback() {
   return (
@@ -88,7 +88,10 @@ export default function ImageViewer({
     ? { level: result.qualityLevel, text: result.qualityText || 'Resultado validado.' }
     : profileAudit(auditProfile, result?.faces || result?.triangles);
   const defaultSaveLabel = isGlb ? 'Guardar GLB' : isStl ? 'Guardar STL' : 'Guardar imagen';
-  const exportBlocked = result?.qualityLevel === 'critico';
+  // "atención" is a review candidate, never a deliverable. Keeping the
+  // viewer available helps diagnose it, while preventing a bad texture or
+  // incomplete multi-view result from leaving the app as GLB/STL/USDZ.
+  const exportBlocked = ['atencion', 'critico'].includes(result?.qualityLevel);
   const paintGate = result?.textureReport?.visual_fidelity?.gate;
   const paintCorrelation = paintGate?.front?.metrics?.spatialColorCorrelation;
 
@@ -242,7 +245,7 @@ export default function ImageViewer({
       <div className="asset-dock glass-card shrink-0 rounded-[18px] p-3.5">
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
-            <p className="font-mono text-[8px] uppercase tracking-[0.16em] text-sky-300/65">Activo listo para revisar</p>
+            <p className="font-mono text-[8px] uppercase tracking-[0.16em] text-sky-300/65">{exportBlocked ? 'Activo bloqueado para entrega' : 'Activo listo para revisar'}</p>
             <p className="mt-1 truncate text-xs text-slate-300">{isGlb ? `Referencia · ${result.prompt}` : result.prompt}</p>
           </div>
           <div className="flex shrink-0 flex-wrap justify-end gap-2">
@@ -262,6 +265,8 @@ export default function ImageViewer({
           <div className="hidden sm:block"><Meta label="Perfil" value={result.profile || asset?.profile || '—'} /></div>
           <div className="hidden sm:block"><Meta label="Material" value={result.textured ? result.textureSize || 'PBR' : 'Sin textura'} /></div>
         </div>
+
+        {exportBlocked && <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-300/[0.07] px-3 py-2 text-[10px] leading-relaxed text-amber-100">La entrega está bloqueada: faltan gates visuales o evidencia multi-vista suficiente. Puedes inspeccionar el resultado, pero no guardarlo ni exportarlo.</p>}
 
         {showDetails && (
           <div className="mt-3 grid grid-cols-2 gap-3 rounded-xl border border-white/5 bg-black/15 p-3 sm:grid-cols-4">
