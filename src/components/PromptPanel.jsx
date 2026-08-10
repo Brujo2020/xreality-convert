@@ -270,7 +270,11 @@ export default function PromptPanel({
     : !prompt.trim() || !imageModelAvailable;
 
   const actionLabel = isMeshy
-    ? (meshyMode === 'preview' ? '⚡ Generar Preview Cheap (5cr)' : '🚀 Refinar PBR (20cr)')
+    ? (meshyMode === 'preview_5cr' || meshyMode === 'preview'
+        ? '⚡ Validar Malla Smart Topology (5cr)'
+        : meshyMode === 'retexture'
+        ? '🎨 Generar Textura PBR De-lit (10cr)'
+        : '🚀 Refinar Meshy 6 PBR (20-30cr)')
     : mode === 'image3d'
     ? 'Convertir imagen a 3D'
     : mode === 'stl'
@@ -327,23 +331,31 @@ export default function PromptPanel({
 
             {/* Meshy Pipeline Mode */}
             <div>
-              <label className="mb-1 block text-[10px] font-medium text-slate-300">Modo de Tarea Meshy</label>
-              <div className="grid grid-cols-2 gap-1.5">
+              <label className="mb-1 block text-[10px] font-medium text-slate-300">Modo de Tarea & Escudo de Créditos</label>
+              <div className="grid grid-cols-3 gap-1.5">
                 <button
                   type="button"
-                  onClick={() => setMeshyMode('preview')}
-                  className={`rounded-xl border p-2 text-left transition ${meshyMode === 'preview' ? 'border-amber-400/40 bg-amber-400/10 text-white' : 'border-white/5 bg-black/10 text-slate-400'}`}
+                  onClick={() => setMeshyMode('preview_5cr')}
+                  className={`rounded-xl border p-2 text-left transition ${meshyMode === 'preview_5cr' || meshyMode === 'preview' ? 'border-emerald-400/50 bg-emerald-500/15 text-white ring-1 ring-emerald-400/40' : 'border-white/5 bg-black/10 text-slate-400'}`}
                 >
-                  <span className="block text-[10px] font-semibold">⚡ Cheap Preview</span>
-                  <span className="block font-mono text-[8px] text-amber-300">5 créditos · Borrador</span>
+                  <span className="block text-[9px] font-bold text-emerald-200">⚡ Validar 5cr</span>
+                  <span className="block font-mono text-[7px] text-emerald-300">T2 Sin Textura</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMeshyMode('retexture')}
+                  className={`rounded-xl border p-2 text-left transition ${meshyMode === 'retexture' ? 'border-amber-400/50 bg-amber-500/15 text-white ring-1 ring-amber-400/40' : 'border-white/5 bg-black/10 text-slate-400'}`}
+                >
+                  <span className="block text-[9px] font-bold text-amber-200">🎨 Textura 10cr</span>
+                  <span className="block font-mono text-[7px] text-amber-300">De-lit Albedo</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setMeshyMode('refine')}
-                  className={`rounded-xl border p-2 text-left transition ${meshyMode === 'refine' ? 'border-indigo-400/40 bg-indigo-400/10 text-white' : 'border-white/5 bg-black/10 text-slate-400'}`}
+                  className={`rounded-xl border p-2 text-left transition ${meshyMode === 'refine' ? 'border-indigo-400/50 bg-indigo-500/15 text-white ring-1 ring-indigo-400/40' : 'border-white/5 bg-black/10 text-slate-400'}`}
                 >
-                  <span className="block text-[10px] font-semibold">🚀 Refine PBR</span>
-                  <span className="block font-mono text-[8px] text-indigo-300">20 créditos · PBR 8K</span>
+                  <span className="block text-[9px] font-bold text-indigo-200">🚀 Meshy 6 PBR</span>
+                  <span className="block font-mono text-[7px] text-indigo-300">20-30cr PBR 8K</span>
                 </button>
               </div>
             </div>

@@ -128,6 +128,29 @@ class MeshyRuntime {
     throw new Error('Tiempo de espera agotado al consultar Meshy API.');
   }
 
+  calculateCreditCost(params) {
+    const isImage = !!params.imageBase64;
+    const model = params.aiModel || (params.cheapValidation ? 'meshy-t2' : 'meshy-6');
+    const withTexture = params.enablePbr !== false && params.mode !== 'preview_untextured';
+
+    if (params.mode === 'remesh') return 5;
+    if (params.mode === 'rig') return 5;
+    if (params.mode === 'animation') return 3;
+    if (params.mode === 'retexture') return 10;
+
+    if (isImage) {
+      if (model === 'meshy-t2' || model === 'other') {
+        return withTexture ? 15 : 5;
+      }
+      // Meshy 6 / T1
+      return withTexture ? 30 : 20;
+    } else {
+      // Text to 3D
+      if (model === 'meshy-6') return 20;
+      return 10;
+    }
+  }
+
   async generate3D(params, onProgress) {
     const apiKey = params.apiKey || this.getApiKey();
     if (!apiKey) {
@@ -138,10 +161,13 @@ class MeshyRuntime {
       const isImageTo3D = !!params.imageBase64;
       const endpoint = isImageTo3D ? '/image-to-3d' : '/text-to-3d';
       const pollEndpointType = isImageTo3D ? 'image-to-3d' : 'text-to-3d';
+      const useCheap5Cr = params.cheapValidation || params.meshyMode === 'preview_5cr';
+      const aiModel = useCheap5Cr ? 'meshy-t2' : (params.aiModel || 'meshy-6');
+      const estimatedCredits = this.calculateCreditCost({ ...params, cheapValidation: useCheap5Cr });
 
       const payload = {
-        mode: params.mode || 'preview', // 'preview' o 'refine'
-        ai_model: 'meshy-6',
+        mode: params.mode || 'preview',
+        ai_model: aiModel,
         ...(isImageTo3D
           ? { image_url: `data:image/png;base64,${params.imageBase64}` }
           : { prompt: params.prompt || 'Game ready 3D asset' }),
@@ -153,6 +179,7 @@ class MeshyRuntime {
         auto_size: params.autoSize !== false,
         remove_lighting: params.removeLighting !== false,
         target_formats: ['glb', 'usdz', 'fbx'],
+        ...(useCheap5Cr ? { enable_pbr: false } : {}),
       };
 
       if (onProgress) onProgress({ percent: 5, stage: 'Enviando tarea a Meshy Cloud API…' });
@@ -192,6 +219,7 @@ class MeshyRuntime {
         thumbnailUrl: taskResult.thumbnail_url,
         faces: taskResult.polycount || params.target_polycount,
         mode: params.mode,
+        creditsUsed: estimatedCredits,
         duration: (Date.now() - (params.startTime || Date.now())) / 1000,
         provider: 'meshy-api',
       };
