@@ -24,6 +24,11 @@ MAX_INPUT_BYTES = 24 * 1024 * 1024
 MAX_IMAGE_PIXELS = 36_000_000
 EVIDENCE_CLASSES = {"measured", "user_asserted", "inferred", "synthetic", "not_measured"}
 TERMINAL_STATES = {"REJECTED", "BLOCKED", "CANCELLED", "ERROR", "NON_MASTER", "MASTER"}
+# Human review is intentionally durable across a control-process restart.  It
+# is not a terminal *decision* (a named reviewer may still select MASTER or
+# NON_MASTER), but recovery must never silently turn a waiting approval into a
+# rejection merely because the local HTTP process restarted.
+RECOVERY_STABLE_STATES = TERMINAL_STATES | {"HUMAN_REVIEW_REQUIRED"}
 ALLOWED_TRANSITIONS = {
     "DRAFT": {"SEALED", "REJECTED", "CANCELLED"},
     "SEALED": {"PREFLIGHTED", "REJECTED", "CANCELLED"},
@@ -167,6 +172,7 @@ def build_job_contract(
     evidence_hash = f"sha256:{sha256_bytes(canonical_json(evidence_manifest))}"
     semantic_hash = f"sha256:{sha256_bytes(canonical_json(semantic_contract))}"
     policy_hash = f"sha256:{sha256_bytes(canonical_json(execution_policy))}"
+    retry_of = execution_policy.get("retry_of")
     return {
         "schema_version": SCHEMA_VERSION,
         "job_id": job_id,
@@ -184,6 +190,7 @@ def build_job_contract(
         "execution_policy_hash": policy_hash,
         "network": {"allowed": False, "consent_id": None},
         "economy": {"currency": "USD", "maximum": 0, "auto_refill": False},
+        "lineage": {"retry_of": retry_of} if retry_of else {"retry_of": None},
     }
 
 
@@ -224,11 +231,18 @@ class JobLedger:
         ledger._version = version
         return ledger
 
-    def seal(self, contract: Mapping[str, Any], evidence: Mapping[str, Any]) -> None:
+    def seal(
+        self,
+        contract: Mapping[str, Any],
+        evidence: Mapping[str, Any],
+        request: Mapping[str, Any] | None = None,
+    ) -> None:
         if self._state != "DRAFT":
             raise ContractError("job_already_sealed")
         atomic_write_json(self.contract_path, dict(contract))
         atomic_write_json(self.job_dir / "evidence-manifest.json", dict(evidence))
+        if request is not None:
+            atomic_write_json(self.job_dir / "request.json", dict(request))
         self.transition("SEALED", "contract_sealed")
 
     def transition(self, target: str, reason_code: str, metadata: Mapping[str, Any] | None = None) -> dict[str, Any]:
@@ -288,3 +302,40 @@ class JobLedger:
             return False
         expected = (result.get("metadata") or {}).get("input_hashes")
         return isinstance(expected, dict) and dict(expected) == dict(input_hashes)
+
+
+def recover_interrupted_ledgers(root: str | Path) -> list[dict[str, Any]]:
+    """Append one safe terminal transition after a control-process restart.
+
+    This deliberately does not auto-resume ML: replaying from an unknown
+    in-memory point could alter output or overwrite the evidence chain.
+    """
+    root_path = Path(root).resolve()
+    if not root_path.is_dir():
+        return []
+    recovery = {
+        "DRAFT": "CANCELLED", "SEALED": "CANCELLED", "PREFLIGHTED": "BLOCKED",
+        "RUNNING_STAGE": "ERROR", "STAGE_PASSED": "CANCELLED",
+        "STAGE_REJECTED": "REJECTED", "RECOVERY_DECISION": "NON_MASTER",
+        "DELIVERY_CANDIDATE": "NON_MASTER", "HUMAN_REVIEW_REQUIRED": "NON_MASTER",
+    }
+    recovered = []
+    for candidate in sorted(root_path.iterdir()):
+        if not candidate.is_dir() or any(char not in "0123456789abcdef-" for char in candidate.name):
+            continue
+        try:
+            ledger = JobLedger.load(root_path, candidate.name)
+        except ContractError:
+            recovered.append({"job_id": candidate.name, "state": "CORRUPT", "recovered": False})
+            continue
+        prior = ledger.state
+        if prior in RECOVERY_STABLE_STATES:
+            recovered.append({"job_id": ledger.job_id, "state": prior, "recovered": False})
+            continue
+        target = recovery.get(prior)
+        if target is None:
+            recovered.append({"job_id": ledger.job_id, "state": prior, "recovered": False})
+            continue
+        ledger.transition(target, "control_process_restarted", {"prior_state": prior})
+        recovered.append({"job_id": ledger.job_id, "state": target, "prior_state": prior, "recovered": True})
+    return recovered

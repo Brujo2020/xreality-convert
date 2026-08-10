@@ -43,6 +43,7 @@
     "productName": "Xreality Convert",
     "icon": "build/icon.icns",
     "asarUnpack": [
+      "engine/*.py",
       "engine/server.py",
       "engine/setup.sh",
       "engine/paint_service.py",
@@ -58,9 +59,11 @@
       "benchmarks/model-arena/run_agenticvibes_paint.py",
       "engine/Hunyuan3D-2.1-mlx/hy3dshape/hy3dshape/**/*",
       "engine/Hunyuan3D-2.1-mlx/hy3dpaint/**/*",
+      "engine/Hunyuan3D-2-official/hy3dgen/**/*",
       "engine/AgenticVibes-Hunyuan3D-Paint/hy3dpaint/**/*"
     ],
     "files": [
+      "engine/*.py",
       "build/**/*",
       "electron/**/*",
       "engine/server.py",
@@ -82,6 +85,9 @@
       "engine/Hunyuan3D-2.1-mlx/hy3dpaint/**/*",
       "!engine/Hunyuan3D-2.1-mlx/hy3dpaint/**/__pycache__/**/*",
       "!engine/Hunyuan3D-2.1-mlx/hy3dpaint/**/*.pyc",
+      "engine/Hunyuan3D-2-official/hy3dgen/**/*",
+      "!engine/Hunyuan3D-2-official/**/__pycache__/**/*",
+      "!engine/Hunyuan3D-2-official/**/*.pyc",
       "engine/AgenticVibes-Hunyuan3D-Paint/hy3dpaint/**/*",
       "!engine/AgenticVibes-Hunyuan3D-Paint/hy3dpaint/**/__pycache__/**/*",
       "!engine/AgenticVibes-Hunyuan3D-Paint/hy3dpaint/**/*.pyc",

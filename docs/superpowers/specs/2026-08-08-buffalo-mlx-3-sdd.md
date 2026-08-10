@@ -36,6 +36,71 @@ Implemented in this repository:
 - a reproducible resident-versus-worker parity gate compares finite geometry,
   vertices/faces, components, extents and latency with explicit thresholds;
   it never substitutes structural parity for visual review or corpus evidence;
+- startup recovery now scans durable ledgers and appends a safe terminal
+  transition for interrupted jobs; it never replays in-memory ML implicitly;
+- an explicit retry endpoint creates a new, lineage-linked attempt only from a
+  restart-recovered job's sealed request and original local image; it never
+  reopens or mutates the source attempt;
+- isolated canonical Blender validation is implemented as an offline,
+  fail-closed evidence service; target runtime budget certification and the
+  first executable typed edit (`replace_material`) are available locally,
+  while viewer/device rendering remains explicitly not measured;
+- semantic part/material graphs, hash-bound derivative lineage and a local
+  adversarial GLB corpus are implemented; actual DCC derivation and target
+  viewer runs remain staged rather than inferred from these contracts;
+- transactional Blender repair/retopo/UV operations, sealed challenger shadow
+  arena reports, and hash-bound named human-review records are implemented;
+  model promotion remains manual and evidence-gated.
+- local GLB LOD derivation is executable with a mandatory independent PBR
+  rebake; regional PBR auditing and config-owned review policy loading are
+  fail-closed. Device/viewer and artistic quality remain explicitly measured
+  only by their future real evidence lanes.
+- the only local route to `MASTER` is now a sealed policy + sealed reviewer
+  registry + all hash-bound gate files + an explicit named-human decision;
+  automatic jobs stop durably at `HUMAN_REVIEW_REQUIRED`, including across a
+  control-process restart. The endpoint is disabled until an operator provides
+  those sealed configuration files and still cannot turn missing gate evidence
+  into a pass.
+- promotion gate files now require a second provenance hop: an immutable,
+  code-owned, lane-specific source attestation under the same job, bound to the
+  reviewed asset. Generic `stage=passed` JSON, arbitrary HTTP booleans and
+  mutable source files cannot be used as evidence.
+- optional-cloud authority is now local and provider-API-free: the provider allow-list
+  defaults to empty, consent is immutable and bound to one job-local artifact,
+  provider, operation, expiry and integer micro-cost ceiling; reservation,
+  reconciliation and an irreversible per-job kill switch are auditable. No
+  provider adapter, credential handling or network upload is implemented.
+- a sealed, deterministic offline acceptance-campaign evaluator now requires
+  exactly 30 fixed cases and preserves `not_measured`/`inconclusive` rather
+  than treating them as a pass. Its local repository now admits each sealed
+  case exactly once and can finalize only the complete 30-case aggregate. It
+  is still an evaluator/repository; the physical 30-job run is required.
+- offline supply-chain manifests now pin local models, skills and scripts to a
+  canonical HTTPS repository, full Git commit, allowlisted licence and actual
+  artifact hashes. Separate runtime-probe evidence can bind genuine external
+  web/XR/mobile/USDZ executions to frames and logs, but neither module starts a
+  viewer, downloads a weight or claims a device measurement by itself.
+- a map-level PBR quality gate now measures embedded base-color,
+  metallic/roughness and normal texture payloads, UV bindings, bounded pixel
+  variation and alpha/transmission declarations per semantic region. It
+  rejects empty/constant/external/malformed maps while continuing to label
+  reference alignment, relighting, baked-light absence and artistic quality as
+  `not_measured` until render evidence exists.
+- the 30-case local corpus now has a sealed preflight inventory that binds
+  actual local bytes, source stratum, licence/consent and observed real-view
+  count; master candidates reject synthetic/provider-only evidence and fewer
+  than two real observed views. Geometry audit now records finite topology,
+  degenerates, components, bounds, winding and required watertightness while
+  openly retaining silhouette/thin-part/self-intersection as `not_measured`
+  where no robust measurement exists.
+- canonical-render evidence can now bind a real Blender output matrix
+  (unlit, three neutral views, grazing, wireframe, semantic-part and applicable
+  alpha/transmission checks) to the exact GLB and semantic graph. It does not
+  render or self-certify; an actual Blender run remains required.
+- an independent glTF Validator lane is exposed through the local control
+  plane. It invokes only a locally installed `gltf-validator` CLI in an
+  offline worker and reports its absence as `not_measured`; it never substitutes
+  a parser or Blender import for Khronos validation.
 - control-plane paths/state exposed through the job status API;
 - unit coverage for journal, contracts, safe GLB handling, semantic delta and
   offline model resolution.
@@ -43,10 +108,11 @@ Implemented in this repository:
 Still staged/target: promotion of the opt-in Shape worker to the default path
 (it must first pass a real-Metal parity/latency trial; the expensive local E2E
 probe is explicitly gated), persisted resume
-runner, Blender sandbox/canonical-render worker, human
-approval UI, regional material editor, actual typed edit executors,
-target-runtime probes, challenger arena and any consented cloud adapter. They
-remain intentionally unclaimed until their slice gates pass.
+runner, production Blender sandbox/canonical-render trials, a human-approval
+UI and the independent gate adapters that produce real review evidence,
+regional material editor, remaining typed edit executors, target-runtime
+probes, real challenger weights/corpus and any consented cloud provider
+adapter. They remain intentionally unclaimed until their slice gates pass.
 
 ## 1. Executive decision
 

@@ -72,4 +72,16 @@ function appleSiliconExecutionPlan({ logicalCores, totalMemoryBytes }) {
   };
 }
 
-module.exports = { inspectHunyuanRuntime, engineProcessEnv, appleSiliconExecutionPlan };
+function engineRestartDelay(attempt, { baseMs = 1000, maxMs = 30000 } = {}) {
+  const safeAttempt = Math.max(1, Math.floor(Number(attempt) || 1));
+  const safeBase = Math.max(1, Math.floor(Number(baseMs) || 1000));
+  const safeMax = Math.max(safeBase, Math.floor(Number(maxMs) || 30000));
+  return Math.min(safeMax, safeBase * (2 ** (safeAttempt - 1)));
+}
+
+module.exports = {
+  inspectHunyuanRuntime,
+  engineProcessEnv,
+  appleSiliconExecutionPlan,
+  engineRestartDelay,
+};

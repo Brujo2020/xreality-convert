@@ -8,9 +8,26 @@ AGENTIC_SOURCE="$ENGINE_DIR/AgenticVibes-Hunyuan3D-Paint"
 AGENTIC_RASTERIZER="$AGENTIC_SOURCE/hy3dpaint/custom_rasterizer"
 MARKER="$ENGINE_DIR/.installed"
 LOCKFILE="$ENGINE_DIR/requirements-macos.lock"
-INSTALL_VERSION="18"
+INSTALL_VERSION="21"
 SOURCE_REVISION="xreality-buffalo-mlx-openusd-watertight-v2"
 SOURCE_MARKER="$ENGINE_DIR/.source-version"
+# The installer creates a Python environment and compiled rasterizer before
+# model weights are fetched on first use. Reserve enough room for that local
+# work instead of leaving a half-created runtime on a full volume.
+MIN_INSTALL_FREE_KIB=$((20 * 1024 * 1024))
+
+ensure_install_space() {
+  local free_kib
+  free_kib="$(/bin/df -Pk "$ENGINE_DIR" | /usr/bin/awk 'NR == 2 { print $4; exit }')"
+  if [[ ! "$free_kib" =~ '^[0-9]+$' ]]; then
+    echo "No se pudo comprobar el espacio libre para instalar el motor 3D."
+    return 1
+  fi
+  if (( free_kib < MIN_INSTALL_FREE_KIB )); then
+    echo "Espacio insuficiente para instalar el motor 3D: se requieren al menos 20 GB libres."
+    return 1
+  fi
+}
 
 python_supports_mlx() {
   local python_bin="$1"
@@ -61,6 +78,8 @@ if [[ -f "$MARKER" && "$(cat "$MARKER")" == "$INSTALL_VERSION" && -f "$SOURCE_MA
   echo "El entorno Python local es incompatible; se reinstalará con una versión soportada."
   rm -rf "$RUNTIME"
 fi
+
+ensure_install_space
 
 if [[ -x "$RUNTIME/bin/python" ]] && ! python_supports_mlx "$RUNTIME/bin/python"; then
   echo "El entorno Python local es incompatible; se reinstalará con una versión soportada."

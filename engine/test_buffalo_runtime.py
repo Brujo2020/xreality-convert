@@ -12,6 +12,7 @@ from buffalo_runtime import (
     build_evidence_manifest,
     build_job_contract,
     decode_base64_image,
+    recover_interrupted_ledgers,
 )
 
 
@@ -51,6 +52,13 @@ class BuffaloRuntimeTests(unittest.TestCase):
             loaded = JobLedger.load(root, "a" * 32)
             self.assertEqual(loaded.state, "STAGE_PASSED")
 
+    def test_seal_can_preserve_request_without_base64_payload(self):
+        with tempfile.TemporaryDirectory() as root:
+            ledger = JobLedger(root, "f" * 32)
+            ledger.seal({"job_id": "f" * 32}, {"input": {}}, {"category": "product"})
+            saved = json.loads((ledger.job_dir / "request.json").read_text())
+        self.assertEqual(saved, {"category": "product"})
+
     def test_ledger_rejects_invalid_transition_and_path_escape(self):
         with tempfile.TemporaryDirectory() as directory:
             ledger = JobLedger(directory, "b" * 32)
@@ -58,3 +66,37 @@ class BuffaloRuntimeTests(unittest.TestCase):
                 ledger.transition("MASTER", "no_shortcut")
             with self.assertRaisesRegex(ContractError, "unsafe_job_id"):
                 JobLedger(directory, "../../escape")
+
+    def test_restart_recovery_appends_safe_terminal_transition(self):
+        with tempfile.TemporaryDirectory() as root:
+            ledger = JobLedger(root, "c" * 32)
+            ledger.transition("SEALED", "test")
+            ledger.transition("PREFLIGHTED", "test")
+            ledger.transition("RUNNING_STAGE", "test")
+            recovered = recover_interrupted_ledgers(root)
+            loaded = JobLedger.load(root, "c" * 32)
+        self.assertEqual(loaded.state, "ERROR")
+        self.assertTrue(recovered[0]["recovered"])
+        self.assertEqual(recovered[0]["prior_state"], "RUNNING_STAGE")
+
+    def test_restart_recovery_leaves_terminal_job_untouched(self):
+        with tempfile.TemporaryDirectory() as root:
+            ledger = JobLedger(root, "d" * 32)
+            ledger.transition("CANCELLED", "test")
+            recovered = recover_interrupted_ledgers(root)
+        self.assertFalse(recovered[0]["recovered"])
+        self.assertEqual(recovered[0]["state"], "CANCELLED")
+
+    def test_restart_keeps_human_review_waiting_without_auto_rejection(self):
+        with tempfile.TemporaryDirectory() as root:
+            ledger = JobLedger(root, "e" * 32)
+            ledger.transition("SEALED", "test")
+            ledger.transition("PREFLIGHTED", "test")
+            ledger.transition("RUNNING_STAGE", "test")
+            ledger.transition("STAGE_PASSED", "test")
+            ledger.transition("DELIVERY_CANDIDATE", "test")
+            ledger.transition("HUMAN_REVIEW_REQUIRED", "test")
+            recovered = recover_interrupted_ledgers(root)
+            loaded = JobLedger.load(root, "e" * 32)
+        self.assertFalse(recovered[0]["recovered"])
+        self.assertEqual(loaded.state, "HUMAN_REVIEW_REQUIRED")

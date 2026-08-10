@@ -25,4 +25,35 @@ exec "$PYTHON_RUNTIME" -m unittest \
   test_secure_artifacts \
   test_stage_supervisor \
   test_shape_worker \
-  test_shape_parity
+  test_shape_parity \
+  test_multiview_contract \
+  test_multiview_shape_backend \
+  test_multiview_shape_worker \
+  test_blender_validation_service \
+  test_edit_executor \
+  test_runtime_certification \
+  test_semantic_graph \
+  test_derivative_lineage \
+  test_adversarial_asset_corpus \
+  test_blender_repair_service \
+  test_challenger_arena \
+  test_human_review \
+  test_lod_derivation \
+  test_regional_pbr_gate \
+  test_review_policy \
+  test_cloud_consent \
+  test_master_promotion_service \
+  test_offline_campaign \
+  test_review_gate_evidence \
+  test_runtime_probe_evidence \
+  test_supply_chain_registry \
+  test_audit_asset \
+  test_pinned_stage_worker \
+  test_pbr_texture_quality_gate \
+  test_offline_campaign_repository \
+  test_geometry_quality_gate \
+  test_offline_corpus_preflight \
+  test_canonical_render_evidence \
+  test_gltf_validator_gate \
+  test_run_offline_campaign \
+  test_run_blender_canonical_e2e

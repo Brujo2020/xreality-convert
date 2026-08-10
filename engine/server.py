@@ -46,10 +46,12 @@ from buffalo_strategy import (
 from buffalo_runtime import (
     ContractError,
     JobLedger,
+    atomic_write_json,
     build_evidence_manifest,
     build_job_contract,
     decode_base64_image,
     make_read_only,
+    recover_interrupted_ledgers,
     validate_image_bytes,
 )
 from pbr_glb import apply_material_features, validate_material_contract
@@ -58,6 +60,21 @@ from reference_projection import validate_native_paint_glb
 from secure_artifacts import validate_glb_container
 from stage_supervisor import StageLimits, StageSupervisor, StageWorkerError
 from agentic_paint_service import memory_snapshot
+from edit_executor import EditExecutionError, execute_replace_material
+from runtime_certification import RuntimeCertificationError, certify_glb_for_target
+from semantic_graph import SemanticGraphError, compile_semantic_graph
+from derivative_lineage import DerivativeLineageError, build_derivative_manifest
+from blender_validation_service import BlenderCanonicalValidationService, BlenderValidationError
+from blender_repair_service import BlenderRepairError, BlenderRepairService
+from lod_derivation import LODDerivationError, derive_glb_lod
+from regional_pbr_gate import audit_regional_pbr
+from pbr_texture_quality_gate import audit_pbr_texture_quality
+from geometry_quality_gate import GeometryQualityError, audit_geometry_quality
+from gltf_validator_gate import GlTFValidatorGate, GlTFValidatorGateError
+from cloud_consent import CloudConsentError, create_consent, engage_kill_switch
+from master_promotion_service import MasterPromotionError, seal_master_promotion
+from multiview_contract import MultiViewContractError, admit_multiview_shape
+from multiview_shape_backend import inspect_multiview_shape_backend
 
 ROOT = Path(__file__).resolve().parent
 SOURCE = ROOT / "Hunyuan3D-2.1-mlx"
@@ -80,13 +97,49 @@ pipeline_lock = threading.RLock()
 generation_lock = threading.Lock()
 preload_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="xreality-shape-load")
 ENGINE_TOKEN = os.environ.get("XREALITY_ENGINE_TOKEN", "")
-ENGINE_VERSION = "20"
+ENGINE_VERSION = "21"
+# The generation path keeps an input, prepared reference, geometry checkpoint,
+# GLB and (when enabled) six Paint views.  These conservative reservations
+# protect the user volume before any Metal allocation is admitted; they are not
+# a claim about model-weight download size.
+MIN_FREE_DISK_BYTES_GEOMETRY = 2 * 1024 ** 3
+MIN_FREE_DISK_BYTES_TEXTURE = 6 * 1024 ** 3
+# There is deliberately no provider default.  Merely installing the engine
+# cannot make a networked route eligible; an operator must both configure an
+# allow-list and create an asset-bound consent below.
+CLOUD_ALLOWED_PROVIDERS = tuple(
+    item.strip() for item in os.environ.get("XREALITY_CLOUD_PROVIDER_ALLOWLIST", "").split(",")
+    if item.strip()
+)
+# These are intentionally unset by default.  A deployment administrator must
+# seal and configure both files before the local review endpoint can act.
+MASTER_REVIEW_POLICY_PATH = os.environ.get("XREALITY_MASTER_REVIEW_POLICY_PATH", "")
+MASTER_REVIEWER_REGISTRY_PATH = os.environ.get("XREALITY_MASTER_REVIEWER_REGISTRY_PATH", "")
 
 app = FastAPI(title="Xreality Convert 3D Engine")
 
 
+@app.on_event("startup")
+async def recover_control_plane_after_restart():
+    """Expose interrupted durable jobs without silently replaying inference."""
+    for item in recover_interrupted_ledgers(JOBS_DIR):
+        job_id = item["job_id"]
+        try:
+            job_ledgers[job_id] = JobLedger.load(JOBS_DIR, job_id)
+        except ContractError:
+            continue
+        if item.get("recovered"):
+            jobs[job_id] = {
+                "status": "interrupted",
+                "stage": "Recuperado tras reinicio; reintento explícito requerido",
+                "recovery": item,
+            }
+
+
 class GenerateRequest(BaseModel):
     image_base64: str = Field(min_length=32)
+    multi_view_images: dict[str, str] = Field(default_factory=dict, max_length=5)
+    use_multiview_shape: bool = False
     steps: int = Field(default=30, ge=10, le=60)
     octree_resolution: int = Field(default=192, ge=96, le=256)
     texture: bool = True  # Enabled by default for premium
@@ -158,10 +211,107 @@ class OpenUsdRequest(BaseModel):
     format: Literal["usdz"] = "usdz"
 
 
+class RuntimeCertificationRequest(BaseModel):
+    glb_path: str
+    target: Literal["web", "xr", "mobile"]
+
+
+class ReplaceMaterialEditRequest(BaseModel):
+    source_glb_path: str
+    delta: dict
+
+
+class DerivativeManifestRequest(BaseModel):
+    master_glb_path: str
+    output_path: str
+    target: Literal["lod", "web", "xr", "mobile", "usdz"]
+    topology_changed: bool
+    target_certificate: dict
+    rebake_evidence: dict | None = None
+
+
+class BlenderValidationRequest(BaseModel):
+    job_id: str = Field(min_length=8, max_length=64)
+    glb_path: str
+    projection_report_path: str
+    output_dir: str
+
+
+class ValidationArtifactStageRequest(BaseModel):
+    job_id: str = Field(min_length=8, max_length=64)
+    glb_path: str
+    projection_report_path: str
+
+
+class BlenderRepairRequest(BaseModel):
+    job_id: str = Field(min_length=8, max_length=64)
+    source_glb_path: str
+    output_glb_path: str
+    operation_contract: dict
+
+
+class LODDerivationRequest(BaseModel):
+    master_glb_path: str
+    output_name: str = Field(min_length=5, max_length=128)
+    target_faces: int = Field(ge=1, le=500000)
+
+
+class RegionalPBRAuditRequest(BaseModel):
+    job_id: str = Field(min_length=8, max_length=64)
+    glb_path: str
+    regional_map_contract: dict
+
+
+class GeometryQualityRequest(BaseModel):
+    job_id: str = Field(min_length=8, max_length=64)
+    glb_path: str
+    policy: dict = Field(default_factory=dict)
+
+
+class GlTFValidatorRequest(BaseModel):
+    job_id: str = Field(min_length=8, max_length=64)
+    glb_path: str
+
+
+class CloudConsentRequest(BaseModel):
+    """Record explicit authority for a future isolated provider adapter.
+
+    This endpoint never uploads data, resolves credentials, or starts a
+    provider worker.  It exists so consent is explicit and hash-bound before a
+    separately implemented adapter can reserve any budget.
+    """
+
+    job_id: str = Field(min_length=8, max_length=64)
+    asset_path: str
+    provider: str = Field(min_length=1, max_length=96)
+    operation: str = Field(min_length=1, max_length=96)
+    max_cost_micros: int = Field(default=0, ge=0, le=10**15)
+    currency: str = Field(default="USD", min_length=3, max_length=3)
+    expires_at: float
+
+
+class CloudKillSwitchRequest(BaseModel):
+    job_id: str = Field(min_length=8, max_length=64)
+    reason: str = Field(min_length=1, max_length=96)
+
+
+class MasterPromotionRequest(BaseModel):
+    job_id: str = Field(min_length=8, max_length=64)
+    asset_path: str
+    reviewer_id: str = Field(min_length=1, max_length=160)
+    decision: Literal["approve", "reject"]
+    note: str | None = Field(default=None, max_length=512)
+
+
 class AnalyzeRequest(BaseModel):
     image_base64: str = Field(min_length=32)
     category: str = "custom"
     background_mode: str = "auto"
+
+
+class MultiViewAdmissionRequest(BaseModel):
+    views: list[dict] = Field(min_length=1, max_length=6)
+    profile: Literal["lowpoly", "mobile", "quest", "vrready", "smart", "xreal", "pcvr", "maxquality"] = "xreal"
 
 
 @app.middleware("http")
@@ -314,6 +464,68 @@ def run_isolated_shape_worker(job_id, prepared_path, request):
     return mesh, {"worker": report, "watchdog": watchdog, "raw_glb": str(raw_glb)}
 
 
+def seal_multiview_inputs(job_id, request, front_path):
+    """Persist six camera inputs immutably before the multi-view worker starts."""
+    views_dir = JOBS_DIR / f"{job_id}-multiview"
+    views_dir.mkdir(parents=True, exist_ok=True)
+    supplied = {"front": request.image_base64, **request.multi_view_images}
+    records = []
+    for view_id in ("front", "right", "back", "left", "top", "bottom"):
+        encoded = supplied.get(view_id)
+        if not encoded:
+            raise RuntimeError(f"Vista multi-vista faltante: {view_id}")
+        if view_id == "front":
+            target = front_path
+        else:
+            target = views_dir / f"{view_id}.png"
+            payload = decode_image_base64(encoded)
+            validate_image_bytes(payload)
+            target.write_bytes(payload)
+            make_read_only(target)
+        records.append({
+            "view_id": view_id,
+            "evidence_class": "measured",
+            "sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
+            "file_path": str(target.resolve()),
+        })
+    admission = admit_multiview_shape(records, profile=request.profile)
+    if not admission["passed"]:
+        raise RuntimeError("Cobertura multi-vista incompleta")
+    manifest = views_dir / "manifest.json"
+    atomic_write_json(manifest, {"profile": request.profile, "views": records, "admission": admission})
+    make_read_only(manifest)
+    return manifest, admission
+
+
+def run_multiview_shape_worker(job_id, manifest_path, request):
+    """Execute official Hunyuan3D-2mv only after six inputs were sealed."""
+    runtime = ROOT / "venv" / "bin" / "python"
+    source = ROOT / "Hunyuan3D-2-official"
+    weights = Path(os.environ.get("XREALITY_MULTIVIEW_WEIGHTS_DIR", ROOT / "models" / "Hunyuan3D-2mv"))
+    if not runtime.is_file() or not source.is_dir() or not weights.is_dir():
+        raise RuntimeError("Runtime multi-vista incompleto")
+    raw_glb = JOBS_DIR / f"{job_id}-shape-multiview.glb"
+    report_path = JOBS_DIR / f"{job_id}-shape-multiview-report.json"
+    command = [str(runtime), str(ROOT / "multiview_shape_worker.py"), "--manifest", str(manifest_path),
+               "--output", str(raw_glb), "--report", str(report_path), "--steps", str(request.steps),
+               "--guidance", str(request.guidance), "--octree-resolution", str(request.octree_resolution),
+               "--weights", str(weights), "--source", str(source), "--device", "mps"]
+    try:
+        watchdog = StageSupervisor(memory_snapshot).run(command, cwd=ROOT.parent, limits=StageLimits(
+            timeout_seconds=1800, minimum_free_percent=8,
+            maximum_swap_growth_mb=float(os.environ.get("XREALITY_MAX_SHAPE_SWAP_GROWTH_MB", "4096")),
+            network_allowed=False,
+        ))
+    except StageWorkerError as exc:
+        raise RuntimeError(f"Shape multi-vista abortado por watchdog: {exc.reason_code}") from exc
+    validate_glb_container(raw_glb)
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    if not report.get("passed") or report.get("provider") != "hunyuan3d-2mv-pytorch":
+        raise RuntimeError("Contrato inválido del worker multi-vista")
+    import trimesh
+    return trimesh.load(str(raw_glb), force="mesh"), {"worker": report, "watchdog": watchdog, "raw_glb": str(raw_glb)}
+
+
 def decode_image_base64(image_base64: str) -> bytes:
     return decode_base64_image(image_base64)
 
@@ -348,6 +560,72 @@ def ledger_summary(job_id: str):
     }
 
 
+def managed_glb_path(value: str) -> Path:
+    source = Path(value).resolve()
+    root = JOBS_DIR.resolve()
+    if not source.is_file() or not source.is_relative_to(root) or source.suffix.lower() != ".glb":
+        raise RuntimeError("Sólo se aceptan GLB administrados por Xreality.")
+    validate_glb_container(source)
+    return source
+
+
+def managed_job_path(value: str) -> Path:
+    source = Path(value).resolve()
+    root = JOBS_DIR.resolve()
+    if not source.is_file() or not source.is_relative_to(root):
+        raise RuntimeError("Sólo se aceptan artefactos administrados por Xreality.")
+    return source
+
+
+def sealed_job_ledger(job_id: str) -> JobLedger:
+    ledger = job_ledgers.get(job_id)
+    if ledger is not None:
+        return ledger
+    candidate = (JOBS_DIR / job_id).resolve()
+    if not candidate.is_dir() or not candidate.is_relative_to(JOBS_DIR.resolve()):
+        raise RuntimeError("El job sellado no existe.")
+    ledger = JobLedger.load(JOBS_DIR, job_id)
+    if not ledger.contract_path.is_file():
+        raise RuntimeError("El job no tiene un contrato sellado.")
+    job_ledgers[job_id] = ledger
+    return ledger
+
+
+def ensure_generation_disk_space(request: GenerateRequest) -> dict:
+    """Fail admission before inference when managed-job storage is exhausted."""
+    required = MIN_FREE_DISK_BYTES_TEXTURE if request.texture else MIN_FREE_DISK_BYTES_GEOMETRY
+    try:
+        free = shutil.disk_usage(JOBS_DIR).free
+    except OSError as exc:
+        raise RuntimeError("No se pudo comprobar el espacio libre del motor local.") from exc
+    if free < required:
+        raise RuntimeError(
+            "Espacio insuficiente para iniciar la conversión: "
+            f"se requieren al menos {required // 1024 ** 3} GB libres y hay "
+            f"{free // 1024 ** 3} GB disponibles."
+        )
+    return {"free_bytes": free, "required_bytes": required}
+
+
+def build_explicit_retry_request(source_job_id: str) -> GenerateRequest:
+    """Rebuild a request only from sealed local evidence after a restart."""
+    source_ledger = JobLedger.load(JOBS_DIR, source_job_id)
+    if not source_ledger.snapshot_path.is_file():
+        raise ContractError("retry_source_unsealed")
+    snapshot = json.loads(source_ledger.snapshot_path.read_text(encoding="utf-8"))
+    if snapshot.get("reason_code") != "control_process_restarted":
+        raise ContractError("retry_requires_restart_recovery")
+    request_path = source_ledger.job_dir / "request.json"
+    image_path = JOBS_DIR / f"{source_job_id}.png"
+    if not request_path.is_file() or not image_path.is_file():
+        raise ContractError("retry_evidence_incomplete")
+    request_payload = json.loads(request_path.read_text(encoding="utf-8"))
+    image_payload = image_path.read_bytes()
+    validate_image_bytes(image_payload)
+    request_payload["image_base64"] = base64.b64encode(image_payload).decode("ascii")
+    return GenerateRequest.model_validate(request_payload)
+
+
 def image_to_base64(image: Image.Image) -> str:
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
@@ -364,10 +642,10 @@ def foreground_mask(image: Image.Image):
 
     gray = rgba.convert("L")
     border_samples = []
-    border_samples.extend(list(gray.crop((0, 0, gray.width, min(16, gray.height))).getdata()))
-    border_samples.extend(list(gray.crop((0, max(0, gray.height - 16), gray.width, gray.height)).getdata()))
-    border_samples.extend(list(gray.crop((0, 0, min(16, gray.width), gray.height)).getdata()))
-    border_samples.extend(list(gray.crop((max(0, gray.width - 16), 0, gray.width, gray.height)).getdata()))
+    border_samples.extend(list(gray.crop((0, 0, gray.width, min(16, gray.height))).get_flattened_data()))
+    border_samples.extend(list(gray.crop((0, max(0, gray.height - 16), gray.width, gray.height)).get_flattened_data()))
+    border_samples.extend(list(gray.crop((0, 0, min(16, gray.width), gray.height)).get_flattened_data()))
+    border_samples.extend(list(gray.crop((max(0, gray.width - 16), 0, gray.width, gray.height)).get_flattened_data()))
     border_value = sum(border_samples) / max(len(border_samples), 1)
     mask = gray.point(lambda value: 255 if abs(value - border_value) > 18 else 0)
     return rgba, mask, False
@@ -473,8 +751,8 @@ def analyze_image(image: Image.Image, category: str, background_mode: str, inclu
         )
     )
     crop_border = gray.crop((0, 0, min(width, 48), min(height, 48)))
-    center_values = list(crop_center.getdata()) or [128]
-    border_values = list(crop_border.getdata()) or [128]
+    center_values = list(crop_center.get_flattened_data()) or [128]
+    border_values = list(crop_border.get_flattened_data()) or [128]
     contrast = abs((sum(center_values) / len(center_values)) - (sum(border_values) / len(border_values)))
 
     status = "Óptima"
@@ -899,7 +1177,11 @@ def apply_texture_to_mesh(
             paint_output,
             reference_path,
             JOBS_DIR / "evidence" / f"{output.stem}-native-paint",
-            fail_closed=False,
+            # A fragmented projection is worse than an untextured delivery.
+            # Preview/mobile may surface it as attention, but premium/master
+            # routes must fall back to the accepted geometry rather than
+            # publishing corrupted albedo as a usable material.
+            fail_closed=asset_plan["quality_tier"] in {"premium", "master"},
         )
         paint_output.replace(output)
         visual_attention = not fidelity.get("gate", {}).get("passed", False)
@@ -918,7 +1200,7 @@ def apply_texture_to_mesh(
                 image_path=reference_path,
                 output_glb_path=output,
                 steps=4,
-                texture_size=1024,
+                texture_size=2048 if int(texture_resolution) >= 2048 else 1024,
                 seed=42,
             )
         elif requested_backend == "fast":
@@ -1081,6 +1363,11 @@ def run_job(job_id: str, request: GenerateRequest):
         requested_paint_backend=request.paint_backend,
         texture_enabled=request.texture,
     )
+    try:
+        semantic_graph = compile_semantic_graph(asset_plan["semantic_contract"])
+    except SemanticGraphError as exc:
+        raise RuntimeError(f"Contrato semántico inválido: {exc}") from exc
+    asset_plan["semantic_graph"] = semantic_graph
     ledger = job_ledgers.get(job_id)
     def cancelled():
         return bool(job.get("cancel_requested"))
@@ -1109,22 +1396,31 @@ def run_job(job_id: str, request: GenerateRequest):
         image_path.write_bytes(input_payload)
         evidence_manifest = build_evidence_manifest(image_path, image_info)
         make_read_only(image_path)
+        multiview_manifest = None
+        multiview_admission = None
+        if request.use_multiview_shape:
+            multiview_manifest, multiview_admission = seal_multiview_inputs(job_id, request, image_path)
         execution_policy = {
             "deadline_seconds": 1800,
             "material_contract": asset_plan["material_contract"],
             "execution_plan": execution_plan,
             "apple_execution": apple_execution,
             "network_allowed": False,
+            "retry_of": job.get("retry_of"),
+            "semantic_graph_id": semantic_graph["graph_id"],
         }
         if ledger is not None:
             contract = build_job_contract(
                 job_id=job_id,
                 request=request.model_dump(exclude={"image_base64"}),
                 evidence_manifest=evidence_manifest,
-                semantic_contract=asset_plan["semantic_contract"],
+                semantic_contract=semantic_graph,
                 execution_policy=execution_policy,
             )
-            ledger.seal(contract, evidence_manifest)
+            ledger.seal(contract, evidence_manifest, request.model_dump(exclude={"image_base64"}))
+            semantic_graph_path = ledger.job_dir / "semantic-graph.json"
+            atomic_write_json(semantic_graph_path, semantic_graph)
+            make_read_only(semantic_graph_path)
             ledger.transition("PREFLIGHTED", "input_admitted", {"image": image_info})
         with Image.open(image_path) as source_image:
             input_analysis = analyze_image(
@@ -1142,22 +1438,23 @@ def run_job(job_id: str, request: GenerateRequest):
         # The experimental worker gives Metal allocations a process boundary.
         # The resident path remains the default until it wins physical-Mac
         # parity and latency trials on the same corpus.
-        use_shape_worker = isolated_shape_worker_enabled()
-        if not use_shape_worker:
+        use_multiview_worker = request.use_multiview_shape
+        use_shape_worker = isolated_shape_worker_enabled() and not use_multiview_worker
+        if not use_shape_worker and not use_multiview_worker:
             # Weight loading is independent from CPU image isolation. Overlapping
             # both shortens a cold first run without running Shape and Paint together.
             pipeline_future = preload_executor.submit(get_pipeline)
         if cancelled():
             return
 
-        job.update({"progress": 8, "stage": "Aislando y encuadrando el sujeto"})
-        prepared_path = prepare_reference(image_path, request)
+        job.update({"progress": 8, "stage": "Sellando cámaras multi-vista" if use_multiview_worker else "Aislando y encuadrando el sujeto"})
+        prepared_path = image_path if use_multiview_worker else prepare_reference(image_path, request)
         mark_milestone("reference_preparation_complete")
         if cancelled():
             return
 
         job.update({"progress": 15, "stage": "Cargando Hunyuan3D"})
-        if not use_shape_worker:
+        if not use_shape_worker and not use_multiview_worker:
             pipeline = pipeline_future.result()
             pipeline_future = None
         mark_milestone("shape_weights_ready")
@@ -1177,11 +1474,14 @@ def run_job(job_id: str, request: GenerateRequest):
 
         job.update({"progress": 30, "stage": "Reconstruyendo volumen"})
         transition_ledger(job_id, "RUNNING_STAGE", "shape_started", {
-            "provider": "hunyuan3d-2.1-mlx",
+            "provider": "hunyuan3d-2mv-pytorch" if use_multiview_worker else "hunyuan3d-2.1-mlx",
             "steps": request.steps,
             "resolution": request.octree_resolution,
+            "multiview_admission": multiview_admission,
         })
-        if use_shape_worker:
+        if use_multiview_worker:
+            mesh, shape_worker_report = run_multiview_shape_worker(job_id, multiview_manifest, request)
+        elif use_shape_worker:
             mesh, shape_worker_report = run_isolated_shape_worker(job_id, prepared_path, request)
         else:
             mesh = extract_mesh(
@@ -1202,7 +1502,7 @@ def run_job(job_id: str, request: GenerateRequest):
         if ledger is not None:
             ledger.record_stage("shape", "passed", {
                 "milestone": milestones.get("shape_inference_complete"),
-                "isolation": shape_worker_report if use_shape_worker else {"mode": "resident"},
+                "isolation": shape_worker_report if (use_shape_worker or use_multiview_worker) else {"mode": "resident"},
             })
         transition_ledger(job_id, "STAGE_PASSED", "shape_passed")
         if cancelled():
@@ -1374,6 +1674,24 @@ def run_job(job_id: str, request: GenerateRequest):
             }
         mark_milestone("paint_pbr_and_glb_complete")
 
+        # Promotion binds to a job-local immutable candidate, never to the
+        # convenient flat delivery output that a later tool could replace.
+        review_candidate = None
+        if ledger is not None:
+            candidate_dir = ledger.job_dir / "delivery-candidate"
+            candidate_dir.mkdir(exist_ok=True)
+            candidate_path = candidate_dir / "asset.glb"
+            if candidate_path.exists():
+                raise RuntimeError("El candidato de revisión ya existe para este job.")
+            shutil.copy2(output, candidate_path)
+            make_read_only(candidate_path)
+            review_candidate = seal_artifact(candidate_path)
+            ledger.record_stage("delivery_candidate", "passed", {
+                "artifact": review_candidate,
+                "source_artifact": seal_artifact(output),
+                "promotion": "human_review_required",
+            })
+
         sealed_artifacts = {
             "input": seal_artifact(image_path),
             "prepared_reference": seal_artifact(prepared_path),
@@ -1381,6 +1699,8 @@ def run_job(job_id: str, request: GenerateRequest):
             "master": seal_artifact(master_output) if master_output else None,
             "delivery_glb": seal_artifact(output),
         }
+        if review_candidate is not None:
+            sealed_artifacts["review_candidate"] = review_candidate
 
         faces = len(getattr(mesh, "faces", []))
         elapsed = round(time.monotonic() - started, 1)
@@ -1487,14 +1807,14 @@ def run_job(job_id: str, request: GenerateRequest):
             "delivery_level": delivery_level,
             "report": Path(report_path).name,
         })
-        # This engine has no named human-approval UI yet. An automated success
-        # is deliberately non-master rather than a self-certified promotion.
-        transition_ledger(job_id, "NON_MASTER", "human_review_required")
+        # Automated success is never MASTER. Keep the durable waiting state so
+        # the only permitted promotion path is a named human decision.
+        transition_ledger(job_id, "HUMAN_REVIEW_REQUIRED", "human_review_required")
         job.update(
             {
                 "status": "done",
                 "progress": 100,
-                "stage": "Completado",
+                "stage": "Completado; requiere revisión humana para MASTER",
                 "glb_path": str(output),
                 "faces": faces,
                 "faces_before": faces_before,
@@ -1568,8 +1888,22 @@ def run_job(job_id: str, request: GenerateRequest):
 
 @app.get("/health")
 def health():
+    # Shape is intentionally lazy-loaded, so an unloaded pipeline is healthy.
+    # A prior load failure is not: callers can then surface a recovery action
+    # instead of treating the engine as silently ready.
+    if not SOURCE.exists():
+        health_status = "unavailable"
+        degraded_reasons = ["shape_runtime_missing"]
+    elif load_error:
+        health_status = "degraded"
+        degraded_reasons = ["shape_pipeline_load_failed"]
+    else:
+        health_status = "ready"
+        degraded_reasons = []
     return {
-        "ready": SOURCE.exists(),
+        "ready": health_status == "ready",
+        "status": health_status,
+        "degraded_reasons": degraded_reasons,
         "engine_version": ENGINE_VERSION,
         "model_loaded": shape_pipeline is not None,
         "error": load_error,
@@ -1599,15 +1933,55 @@ def analyze(request: AnalyzeRequest):
     return analyze_image(image, request.category, request.background_mode)
 
 
+@app.post("/multiview/admit")
+def admit_multiview(request: MultiViewAdmissionRequest):
+    """Validate six camera records before a future multi-view Shape stage."""
+    try:
+        return {"ok": True, "admission": admit_multiview_shape(request.views, profile=request.profile)}
+    except MultiViewContractError as exc:
+        return {"ok": False, "error": str(exc), "promotion": "blocked"}
+
+
+@app.get("/multiview/status")
+def multiview_status():
+    """Advertise only a backend that can actually consume labelled cameras."""
+    return inspect_multiview_shape_backend(SOURCE)
+
+
 @app.post("/generate")
 async def generate(request: GenerateRequest):
     if not SOURCE.exists():
         raise HTTPException(503, "Motor no instalado. Ejecuta la instalación desde Xreality Convert.")
+    try:
+        ensure_generation_disk_space(request)
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
     job_id = uuid.uuid4().hex
     job_ledgers[job_id] = JobLedger(JOBS_DIR, job_id)
     jobs[job_id] = {"status": "queued", "cancel_requested": False, "progress": 0, "stage": "En cola"}
     asyncio.create_task(asyncio.to_thread(run_job, job_id, request))
     return {"job_id": job_id, "control_plane": ledger_summary(job_id)}
+
+
+@app.post("/retry/{source_job_id}")
+async def retry_interrupted_job(source_job_id: str):
+    """Create a new lineage-linked attempt; source history remains immutable."""
+    try:
+        request = build_explicit_retry_request(source_job_id)
+    except (ContractError, OSError, ValueError) as exc:
+        raise HTTPException(409, f"Reintento no disponible: {exc}") from exc
+    try:
+        ensure_generation_disk_space(request)
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    job_id = uuid.uuid4().hex
+    job_ledgers[job_id] = JobLedger(JOBS_DIR, job_id)
+    jobs[job_id] = {
+        "status": "queued", "cancel_requested": False, "progress": 0,
+        "stage": "Reintento en cola", "retry_of": source_job_id,
+    }
+    asyncio.create_task(asyncio.to_thread(run_job, job_id, request))
+    return {"job_id": job_id, "retry_of": source_job_id, "control_plane": ledger_summary(job_id)}
 
 
 @app.post("/cancel/{job_id}")
@@ -1633,11 +2007,7 @@ def to_stl(request: StlRequest):
     try:
         import trimesh
 
-        managed_root = JOBS_DIR.resolve()
-        source = Path(request.glb_path).resolve()
-        if managed_root not in source.parents or not source.is_file():
-            raise RuntimeError("Solo se pueden convertir GLB generados dentro del directorio de jobs.")
-        validate_glb_container(source)
+        source = managed_glb_path(request.glb_path)
         mesh = trimesh.load(source, force="mesh")
         if isinstance(mesh, trimesh.Scene):
             mesh = trimesh.util.concatenate(tuple(mesh.geometry.values()))
@@ -1679,16 +2049,311 @@ def to_stl(request: StlRequest):
 def to_openusd(request: OpenUsdRequest):
     """Export a generated GLB as a validated Apple RealityKit USDZ package."""
     try:
-        source = Path(request.glb_path).resolve()
-        managed_root = JOBS_DIR.resolve()
-        if not source.is_relative_to(managed_root):
-            raise RuntimeError("Por seguridad, sólo se convierten activos generados por Xreality.")
-        if not source.is_file():
-            raise RuntimeError("El activo GLB no existe.")
-        validate_glb_container(source)
+        source = managed_glb_path(request.glb_path)
         return convert_glb_to_usdz(source, JOBS_DIR / "openusd")
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
+
+
+@app.post("/certify-runtime")
+def certify_runtime(request: RuntimeCertificationRequest):
+    """Certify local GLB structure/budgets, never an unmeasured viewer run."""
+    try:
+        certificate = certify_glb_for_target(managed_glb_path(request.glb_path), request.target)
+        return {"ok": True, "certificate": certificate}
+    except (RuntimeCertificationError, RuntimeError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@app.post("/edit/replace-material")
+def edit_replace_material(request: ReplaceMaterialEditRequest):
+    """Apply the first bounded Buffalo delta without mutating the master."""
+    try:
+        source = managed_glb_path(request.source_glb_path)
+        output = JOBS_DIR / f"{source.stem}-material-edit-{uuid.uuid4().hex}.glb"
+        result = execute_replace_material(source, output, request.delta)
+        return {"ok": True, "edit": result}
+    except (EditExecutionError, RuntimeError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@app.post("/derivatives/manifest")
+def seal_derivative(request: DerivativeManifestRequest):
+    """Seal lineage only after a target-specific certificate is supplied."""
+    try:
+        manifest = build_derivative_manifest(
+            master_path=managed_glb_path(request.master_glb_path),
+            output_path=managed_job_path(request.output_path),
+            target=request.target,
+            topology_changed=request.topology_changed,
+            target_certificate=request.target_certificate,
+            rebake_evidence=request.rebake_evidence,
+        )
+        destination = JOBS_DIR / "derivatives" / f"{uuid.uuid4().hex}.json"
+        atomic_write_json(destination, manifest)
+        return {"ok": True, "manifest_path": str(destination), "manifest": manifest}
+    except (DerivativeLineageError, RuntimeError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@app.post("/validate-blender")
+def validate_blender_canonically(request: BlenderValidationRequest):
+    """Create offline canonical render evidence; never self-promote a master."""
+    try:
+        ledger = sealed_job_ledger(request.job_id)
+        result = BlenderCanonicalValidationService().run(
+            job_dir=ledger.job_dir,
+            glb_path=request.glb_path,
+            projection_report_path=request.projection_report_path,
+            output_dir=request.output_dir,
+        )
+        ledger.record_stage("blender_canonical", "passed", {
+            "report_path": result["render_report_path"],
+            "promotion": "human_review_required",
+        })
+        job_ledgers[request.job_id] = ledger
+        return {"ok": True, "validation": result}
+    except (BlenderValidationError, ContractError, RuntimeError) as exc:
+        return {"ok": False, "error": str(exc), "promotion": "blocked"}
+
+
+@app.post("/stage-validation-artifacts")
+def stage_validation_artifacts(request: ValidationArtifactStageRequest):
+    """Seal managed GLB/projection inputs before an independent DCC worker reads them."""
+    try:
+        ledger = sealed_job_ledger(request.job_id)
+        glb = managed_glb_path(request.glb_path)
+        projection = managed_job_path(request.projection_report_path)
+        if projection.suffix.lower() != ".json":
+            raise RuntimeError("El reporte de proyección debe ser JSON.")
+        destination = ledger.job_dir / "validation-inputs"
+        if destination.exists():
+            raise RuntimeError("Los inputs de validación ya fueron sellados para este job.")
+        destination.mkdir(parents=True)
+        sealed_glb = destination / "asset.glb"
+        sealed_projection = destination / "projection-report.json"
+        shutil.copy2(glb, sealed_glb)
+        shutil.copy2(projection, sealed_projection)
+        validate_glb_container(sealed_glb)
+        json.loads(sealed_projection.read_text(encoding="utf-8"))
+        make_read_only(sealed_glb)
+        make_read_only(sealed_projection)
+        ledger.record_stage("validation_inputs", "passed", {
+            "glb": seal_artifact(sealed_glb),
+            "projection_report": seal_artifact(sealed_projection),
+        })
+        return {
+            "ok": True,
+            "job_id": request.job_id,
+            "glb_path": str(sealed_glb),
+            "projection_report_path": str(sealed_projection),
+        }
+    except (ContractError, RuntimeError, OSError, ValueError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@app.post("/repair-blender")
+def repair_with_blender(request: BlenderRepairRequest):
+    """Run exactly one bounded repair/retopo/UV operation in isolated Blender."""
+    try:
+        ledger = sealed_job_ledger(request.job_id)
+        result = BlenderRepairService().run(
+            job_dir=ledger.job_dir,
+            source_glb_path=request.source_glb_path,
+            output_glb_path=request.output_glb_path,
+            operation_contract=request.operation_contract,
+        )
+        ledger.record_stage("blender_repair", "passed", {
+            "operation": result["operation"],
+            "output": result["output"],
+            "report_path": result["report_path"],
+            "promotion": "human_review_required",
+        })
+        return {"ok": True, "repair": result}
+    except (BlenderRepairError, ContractError, RuntimeError) as exc:
+        return {"ok": False, "error": str(exc), "promotion": "blocked"}
+
+
+@app.post("/derive-lod")
+def derive_lod(request: LODDerivationRequest):
+    """Create an actual local geometry LOD; PBR rebake remains mandatory."""
+    try:
+        master = managed_glb_path(request.master_glb_path)
+        name = Path(request.output_name)
+        if name.name != request.output_name or name.suffix.lower() != ".glb":
+            raise RuntimeError("El nombre de salida LOD debe ser un archivo GLB simple.")
+        output = JOBS_DIR / "derivatives" / name
+        output.parent.mkdir(parents=True, exist_ok=True)
+        report = derive_glb_lod(master, output, target_faces=request.target_faces)
+        return {"ok": True, "lod": report, "rebake_required": True}
+    except (LODDerivationError, RuntimeError) as exc:
+        return {"ok": False, "error": str(exc), "rebake_required": True}
+
+
+@app.post("/audit-regional-pbr")
+def audit_pbr_regions(request: RegionalPBRAuditRequest):
+    """Seal a regional PBR audit; unknown visual lanes remain not measured."""
+    try:
+        ledger = sealed_job_ledger(request.job_id)
+        graph_path = ledger.job_dir / "semantic-graph.json"
+        if not graph_path.is_file():
+            raise RuntimeError("El grafo semántico sellado no existe.")
+        graph = json.loads(graph_path.read_text(encoding="utf-8"))
+        report = audit_regional_pbr(managed_glb_path(request.glb_path), graph, request.regional_map_contract)
+        report_path = ledger.job_dir / "regional-pbr-report.json"
+        if report_path.exists():
+            raise RuntimeError("La auditoría PBR regional ya fue sellada para este job.")
+        atomic_write_json(report_path, report)
+        make_read_only(report_path)
+        ledger.record_stage("regional_pbr", "passed" if report.get("passed") else "rejected", {
+            "report_path": str(report_path), "failures": report.get("failures", []),
+        })
+        return {"ok": bool(report.get("passed")), "report_path": str(report_path), "audit": report}
+    except (ContractError, RuntimeError, OSError, ValueError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@app.post("/audit-pbr-textures")
+def audit_pbr_texture_maps(request: RegionalPBRAuditRequest):
+    """Measure embedded PBR-map integrity without claiming visual realism."""
+    try:
+        ledger = sealed_job_ledger(request.job_id)
+        graph_path = ledger.job_dir / "semantic-graph.json"
+        if not graph_path.is_file():
+            raise RuntimeError("El grafo semántico sellado no existe.")
+        graph = json.loads(graph_path.read_text(encoding="utf-8"))
+        report = audit_pbr_texture_quality(
+            managed_glb_path(request.glb_path), graph, request.regional_map_contract,
+        )
+        report_path = ledger.job_dir / "pbr-texture-quality-report.json"
+        if report_path.exists():
+            raise RuntimeError("La auditoría de mapas PBR ya fue sellada para este job.")
+        atomic_write_json(report_path, report)
+        make_read_only(report_path)
+        ledger.record_stage("pbr_texture_quality", "passed" if report.get("passed") else "rejected", {
+            "report_path": str(report_path),
+            "failures": report.get("failures", []),
+            "not_measured": report.get("evidence_scope", {}),
+        })
+        return {"ok": bool(report.get("passed")), "report_path": str(report_path), "audit": report}
+    except (ContractError, RuntimeError, OSError, ValueError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@app.post("/audit-geometry")
+def audit_geometry(request: GeometryQualityRequest):
+    """Seal local structural geometry evidence; unmeasured lanes remain so."""
+    try:
+        ledger = sealed_job_ledger(request.job_id)
+        report = audit_geometry_quality(managed_glb_path(request.glb_path), policy=request.policy)
+        report_path = ledger.job_dir / "geometry-quality-report.json"
+        if report_path.exists():
+            raise RuntimeError("La auditoría geométrica ya fue sellada para este job.")
+        atomic_write_json(report_path, report)
+        make_read_only(report_path)
+        ledger.record_stage("geometry_quality", "passed" if report.get("passed") else "rejected", {
+            "report_path": str(report_path), "failures": report.get("failures", []),
+            "not_measured": report.get("not_measured", {}),
+        })
+        return {"ok": bool(report.get("passed")), "report_path": str(report_path), "audit": report}
+    except (GeometryQualityError, ContractError, RuntimeError, OSError, ValueError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@app.post("/validate-gltf")
+def validate_gltf(request: GlTFValidatorRequest):
+    """Run Khronos CLI only when installed; absent tooling stays unmeasured."""
+    try:
+        ledger = sealed_job_ledger(request.job_id)
+        result = GlTFValidatorGate().run(
+            job_dir=ledger.job_dir,
+            glb_path=managed_glb_path(request.glb_path),
+        )
+        if result.get("status") == "not_measured":
+            return {"ok": False, "validator": result}
+        ledger.record_stage("gltf_validator", "passed" if result.get("passed") else "rejected", result)
+        return {"ok": bool(result.get("passed")), "validator": result}
+    except (GlTFValidatorGateError, ContractError, RuntimeError, OSError, ValueError) as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@app.post("/cloud/consent")
+def create_cloud_consent(request: CloudConsentRequest):
+    """Seal opt-in cloud authority without performing network I/O.
+
+    SDD H-08: the default provider allow-list is empty, so an unconfigured
+    installation rejects this request.  The asset must belong to the exact
+    sealed job -- another job's managed output cannot be reused as consent
+    input.
+    """
+    try:
+        ledger = sealed_job_ledger(request.job_id)
+        asset = managed_job_path(request.asset_path)
+        if not asset.is_relative_to(ledger.job_dir):
+            raise RuntimeError("El asset cloud debe pertenecer al job sellado.")
+        artifact = seal_artifact(asset)
+        consent = create_consent(
+            job_dir=ledger.job_dir,
+            asset_sha256=artifact["sha256"],
+            provider=request.provider,
+            operation=request.operation,
+            max_cost_micros=request.max_cost_micros,
+            currency=request.currency,
+            expires_at=request.expires_at,
+            allowed_providers=CLOUD_ALLOWED_PROVIDERS,
+        )
+        return {
+            "ok": True,
+            "network_started": False,
+            "provider_adapter": "not_installed",
+            "asset": artifact,
+            "consent": consent,
+        }
+    except (CloudConsentError, ContractError, RuntimeError, OSError) as exc:
+        return {"ok": False, "network_started": False, "error": str(exc)}
+
+
+@app.post("/cloud/kill-switch")
+def disable_cloud_for_job(request: CloudKillSwitchRequest):
+    """Irreversibly deny future cloud reservations for one sealed job."""
+    try:
+        ledger = sealed_job_ledger(request.job_id)
+        record = engage_kill_switch(job_dir=ledger.job_dir, reason=request.reason)
+        return {"ok": True, "network_started": False, "kill_switch": record}
+    except (CloudConsentError, ContractError, RuntimeError, OSError) as exc:
+        return {"ok": False, "network_started": False, "error": str(exc)}
+
+
+@app.post("/review/master")
+def decide_master_promotion(request: MasterPromotionRequest):
+    """Apply the sole explicit, named-human path from candidate to MASTER."""
+    try:
+        if not MASTER_REVIEW_POLICY_PATH or not MASTER_REVIEWER_REGISTRY_PATH:
+            raise RuntimeError("La política y el registro de revisores MASTER no están configurados.")
+        ledger = sealed_job_ledger(request.job_id)
+        if ledger.state != "HUMAN_REVIEW_REQUIRED":
+            raise RuntimeError("El job no está esperando una decisión humana MASTER.")
+        asset = managed_glb_path(request.asset_path)
+        if not asset.is_relative_to(ledger.job_dir):
+            raise RuntimeError("El asset revisado debe ser el candidato sellado del job.")
+        record = seal_master_promotion(
+            job_dir=ledger.job_dir,
+            asset_path=asset,
+            reviewer_id=request.reviewer_id,
+            decision=request.decision,
+            policy_path=MASTER_REVIEW_POLICY_PATH,
+            reviewer_registry_path=MASTER_REVIEWER_REGISTRY_PATH,
+            note=request.note,
+        )
+        target = "MASTER" if record["promotion"] == "MASTER" else "NON_MASTER"
+        ledger.transition(target, "named_human_review", {
+            "promotion_record": record["record_id"],
+            "reviewer_id": request.reviewer_id,
+            "decision": request.decision,
+        })
+        return {"ok": True, "promotion": target, "record": record}
+    except (MasterPromotionError, ContractError, RuntimeError, OSError) as exc:
+        return {"ok": False, "promotion": "blocked", "error": str(exc)}
 
 
 if __name__ == "__main__":

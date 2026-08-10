@@ -2,7 +2,7 @@ export const MODEL_CATEGORIES = {
   animal: {
     icon: '◉', label: 'Animal', description: 'Mascotas y cuadrúpedos con silueta completa.',
     profile: 'xreal', steps: 35, octree: 192, targetFaces: 70000, guidance: 7.2,
-    textureSize: '1K', paintBackend: 'fast', backgroundMode: 'auto', padding: 0.2, scale: 1,
+    textureSize: '2K', paintBackend: 'agentic', backgroundMode: 'auto', padding: 0.2, scale: 1,
   },
   person: {
     icon: '♙', label: 'Persona', description: 'Cuerpo entero, pose neutra y extremidades separadas.',

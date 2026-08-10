@@ -39,6 +39,8 @@ La aplicación mantiene los modelos, pesos y geometría en local, y muestra diag
 - Ollama instalado y en ejecución
 - Python 3.11 o 3.12 para el flujo Imagen a 3D
 - Conexión local a los modelos de Ollama
+- Al menos 20 GB libres antes de instalar el motor Imagen a 3D
+- Antes de generar: 2 GB libres para geometría o 6 GB si se solicitan texturas
 
 ### 5. Flujo Imagen
 
@@ -85,6 +87,10 @@ La app muestra:
 
 La exportación STL se bloquea si la calidad es crítica.
 
+El resultado automático es un candidato de entrega, no un activo `MASTER`.
+La promoción a `MASTER` exige evidencia adicional y una revisión humana con
+nombre; una sola imagen no demuestra la geometría oculta.
+
 ### 8. Buenas prácticas para Imagen a 3D
 
 - Usa una sola figura u objeto principal
@@ -103,16 +109,38 @@ Instalación esperada:
 2. Ejecuta el instalador integrado de la app.
 3. La app recrea el entorno si detecta un venv incompatible.
 
-Si el servidor ya existe en el equipo, la app intenta arrancarlo automáticamente al abrirse.
+La app sólo permite una instancia y un trabajo pesado a la vez. Al abrirse,
+comprueba el puerto local y reutiliza un servidor sano; no reemplaza un proceso
+ajeno. Si el servidor se reinicia durante un trabajo, el trabajo queda marcado
+como interrumpido y requiere un reintento explícito para preservar la evidencia.
 
-### 10. Resolución de problemas
+El estado del motor puede ser:
+
+- `ready`: listo; el modelo Shape puede cargarse de forma perezosa al primer trabajo.
+- `degraded`: existe el runtime, pero falló una carga previa; revisa el log local y reinstala si persiste.
+- `unavailable`: falta el runtime Shape; ejecuta el instalador integrado.
+
+### 10. Calidad, seguridad y límites
+
+El flujo conserva localmente el original, la referencia preparada, un checkpoint
+de geometría y un reporte técnico. Shape y Paint se ejecutan en secuencia para
+evitar solapar pesos Metal. Las gates pueden rechazar una malla por geometría,
+normales, componentes, material o exportación STL insegura.
+
+La app no sustituye silenciosamente un modelo, no fabrica vistas ocultas y no
+convierte una métrica incompleta en una aprobación. Una calidad `atención`,
+`not_measured` o una evidencia sintética no equivale a una aprobación maestra.
+
+### 11. Resolución de problemas
 
 - Si Ollama no aparece, comprueba que esté ejecutándose localmente.
 - Si Imagen a 3D no inicia, verifica Python 3.11/3.12.
 - Si la exportación STL queda bloqueada, revisa la calidad de la reconstrucción.
 - Si la app no abre por seguridad, usa clic derecho > `Abrir` la primera vez.
+- Si no hay espacio suficiente, libera almacenamiento y vuelve a instalar o generar.
+- Si el motor aparece como `degraded`, consulta `engine-runtime.log` en el soporte de la app y reinstala el motor antes de reintentar.
 
-### 11. Atajos útiles
+### 12. Atajos útiles
 
 - `Generar` inicia el flujo actual
 - `Cancelar` detiene el trabajo en curso
@@ -131,6 +159,12 @@ Xreality Convert is a macOS desktop app for keeping asset creation local:
 - Image to 3D reconstruction with local Hunyuan3D MLX
 
 The app keeps models, weights, and geometry on your machine and surfaces diagnosis, progress, and quality checks for every job.
+
+Model weights use one shared Hugging Face cache. By default this is
+`~/.cache/huggingface/hub` for both Terminal and Finder launches. Set
+`HF_HUB_CACHE` before launching the app only when intentionally placing that
+single cache on another volume; Xreality Convert does not create a second
+weights cache under Application Support.
 
 ### 2. Overview
 
@@ -153,6 +187,8 @@ The app keeps models, weights, and geometry on your machine and surfaces diagnos
 - Ollama installed and running
 - Python 3.11 or 3.12 for Image to 3D
 - Local access to the Ollama models you want to use
+- At least 20 GB free before installing the Image to 3D engine
+- Before generation: 2 GB free for geometry or 6 GB when requesting textures
 
 ### 5. Image workflow
 
@@ -199,6 +235,10 @@ The app shows:
 
 STL export is blocked when the quality gate is critical.
 
+An automatic result is a delivery candidate, not a `MASTER` asset. Promotion
+to `MASTER` requires additional evidence and a named human review; one image
+does not prove hidden geometry.
+
 ### 8. Best practices for Image to 3D
 
 - Use one main subject
@@ -217,16 +257,38 @@ Expected setup:
 2. Run the built-in installer from the app.
 3. The app recreates the environment if it detects an incompatible venv.
 
-If the server already exists on the machine, the app tries to start it automatically on launch.
+The app permits one application instance and one heavy job at a time. On
+launch it checks the local port and reuses a healthy server; it does not replace
+an unrelated process. If the server restarts mid-job, the job is marked as
+interrupted and requires an explicit retry to preserve its evidence.
 
-### 10. Troubleshooting
+Engine status can be:
+
+- `ready`: ready; Shape may be lazy-loaded on the first job.
+- `degraded`: the runtime exists, but a previous load failed; inspect the local log and reinstall if it persists.
+- `unavailable`: the Shape runtime is missing; run the built-in installer.
+
+### 10. Quality, safety, and limits
+
+The workflow keeps the original, prepared reference, geometry checkpoint, and
+technical report locally. Shape and Paint run sequentially so Metal weights do
+not overlap. Gates may reject a mesh for geometry, normals, components,
+materials, or unsafe STL export.
+
+The app does not silently substitute a model, manufacture hidden views, or
+turn incomplete evidence into an approval. `attention`, `not_measured`, or
+synthetic evidence is not a master approval.
+
+### 11. Troubleshooting
 
 - If Ollama is missing, check that it is running locally.
 - If Image to 3D does not start, verify Python 3.11/3.12.
 - If STL export is blocked, check the reconstruction quality.
 - If macOS blocks the app on first launch, use right-click > `Open`.
+- If free space is insufficient, free storage and install or generate again.
+- If the engine is `degraded`, inspect `engine-runtime.log` in the app support folder and reinstall the engine before retrying.
 
-### 11. Useful actions
+### 12. Useful actions
 
 - `Generate` starts the active workflow
 - `Cancel` stops the current job

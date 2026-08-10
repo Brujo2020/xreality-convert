@@ -26,11 +26,11 @@ Estados: `[ ]` pendiente, `[~]` en curso, `[x]` completado.
 - [x] Inicio automático de Ollama.
 - [x] Inicio automático del servidor Hunyuan.
 - [x] Caché persistente de pesos y dependencias.
-- [ ] Lock de proceso para evitar servidores duplicados.
-- [ ] Cola local con un job pesado activo.
-- [ ] Health check con estados degradados diferenciados.
-- [ ] Reinicio automático con backoff y límite.
-- [ ] Verificación de espacio libre antes de instalar/generar.
+- [x] Lock de proceso para evitar servidores duplicados.
+- [x] Cola local con un job pesado activo.
+- [x] Health check con estados degradados diferenciados.
+- [x] Reinicio automático con backoff y límite.
+- [x] Verificación de espacio libre antes de instalar/generar.
 - [ ] Checksum y reparación selectiva de instalación.
 - [ ] Logs estructurados por job, etapa, duración y error.
 - [ ] Limpieza segura de temporales antiguos.

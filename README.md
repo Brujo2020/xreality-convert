@@ -30,7 +30,9 @@ La app está pensada para trabajar en local, con historial, diagnóstico y expor
 3. Launch the app.
 4. On first launch, if macOS shows a warning, right-click the app and choose `Open`.
 
-The release DMG is signed and notarized for safer installation on Mac.
+The local build is code-signed when a signing identity is available. Apple
+notarization is a separate release step and must be configured before claiming
+that a published DMG is notarized.
 
 ## Requirements
 
@@ -46,7 +48,7 @@ The release DMG is signed and notarized for safer installation on Mac.
 - Cancelable jobs and local history
 - Bilingual documentation and a current user manual
 - Native macOS branding, favicon, icon, and dock identity
-- Signed and notarized DMG distribution
+- Code-signed macOS packaging; notarization when configured for a release
 
 ## Quick Start
 

@@ -36,3 +36,5 @@ target/
 release/
 ui-smoke-output/
 engine/.upstream-git/
+engine/models/
+engine/jobs/

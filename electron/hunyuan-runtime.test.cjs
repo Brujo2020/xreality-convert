@@ -8,6 +8,7 @@ const {
   inspectHunyuanRuntime,
   engineProcessEnv,
   appleSiliconExecutionPlan,
+  engineRestartDelay,
 } = require('./hunyuan-runtime.cjs');
 
 function createRuntime(version = '10', revision = 'xreality-art-director-v2') {
@@ -137,6 +138,15 @@ test('keeps Electron, setup and server engine versions aligned', () => {
   assert.equal(electronRevision, setupRevision);
 });
 
+test('packages and synchronizes every production Python control-plane module', () => {
+  const main = fs.readFileSync(path.join(__dirname, 'main.js'), 'utf8');
+  const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+
+  assert.match(main, /filename\.endsWith\('\.py'\) && !filename\.startsWith\('test_'/);
+  assert.ok(packageJson.build.asarUnpack.includes('engine/*.py'));
+  assert.ok(packageJson.build.files.includes('engine/*.py'));
+});
+
 test('singleflights engine startup and self-recovers before generation', () => {
   const main = fs.readFileSync(path.join(__dirname, 'main.js'), 'utf8');
 
@@ -148,6 +158,20 @@ test('singleflights engine startup and self-recovers before generation', () => {
   assert.match(main, /return \{ started: false, starting: true \}/);
   assert.match(main, /ipcMain\.handle\('hunyuan:convertOpenUsd'/);
   assert.match(main, /pathName: '\/to-openusd'/);
+  assert.match(main, /const HUNYUAN_RESTART_LIMIT = 4/);
+  assert.match(main, /if \(!hunyuanShutdownRequested\) scheduleHunyuanRestart\(\)/);
+  assert.match(main, /Date\.now\(\) - startedAt >= 30000/);
+  assert.match(main, /spawn del motor falló/);
+  assert.match(main, /const HUGGINGFACE_HUB_CACHE = process\.env\.HF_HUB_CACHE/);
+  assert.match(main, /HF_HUB_CACHE: HUGGINGFACE_HUB_CACHE/);
+});
+
+test('bounds automatic engine restart with exponential backoff', () => {
+  assert.equal(engineRestartDelay(1), 1000);
+  assert.equal(engineRestartDelay(2), 2000);
+  assert.equal(engineRestartDelay(4), 8000);
+  assert.equal(engineRestartDelay(99), 30000);
+  assert.equal(engineRestartDelay(-1, { baseMs: 250, maxMs: 1000 }), 250);
 });
 
 test('renderer submits requested steps before reading the engine response', () => {
@@ -156,6 +180,7 @@ test('renderer submits requested steps before reading the engine response', () =
 
   assert.ok(request, 'generate3D request block should exist');
   assert.match(request[1], /steps: steps3d/);
+  assert.match(request[1], /useMultiviewShape: views\.length === 6 && multiViewBackend\?\.available === true/);
   assert.doesNotMatch(request[1], /res\.executionPlan/);
   assert.match(appSource, /steps: res\.executionPlan\?\.steps \?\? steps3d/);
 });

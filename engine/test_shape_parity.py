@@ -3,6 +3,8 @@ from pathlib import Path
 from unittest import mock
 import json
 import tempfile
+import io
+from contextlib import redirect_stdout
 
 import trimesh
 
@@ -45,7 +47,8 @@ class ShapeParityTests(unittest.TestCase):
             with mock.patch.object(
                 benchmark_shape_isolation, "run_resident_compatibility", side_effect=RuntimeError("resident_compat_failed:memory_admission")
             ):
-                status = benchmark_shape_isolation.main(["--input", str(image), "--report", str(report)])
+                with redirect_stdout(io.StringIO()):
+                    status = benchmark_shape_isolation.main(["--input", str(image), "--report", str(report)])
             self.assertEqual(status, 2)
             self.assertEqual(json.loads(report.read_text())["reason_code"], "resident_compat_failed")
 
