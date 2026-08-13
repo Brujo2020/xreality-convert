@@ -56,4 +56,5 @@ exec "$PYTHON_RUNTIME" -m unittest \
   test_canonical_render_evidence \
   test_gltf_validator_gate \
   test_run_offline_campaign \
-  test_run_blender_canonical_e2e
+  test_run_blender_canonical_e2e \
+  test_3d_local_orchestrator

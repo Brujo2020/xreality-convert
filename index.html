@@ -3,17 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#061429" />
+    <meta name="theme-color" content="#010714" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data:; img-src 'self' data: blob: https:; connect-src 'self' blob: data: http://localhost:* http://127.0.0.1:* https://api.meshy.ai https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+      content="default-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data:; img-src 'self' data: blob: https:; connect-src 'self' blob: data: http://localhost:* http://127.0.0.1:* https://api.meshy.ai https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; script-src 'self' 'unsafe-inline' 'unsafe-eval'"
     />
-    <title>Xreality Convert</title>
+    <title>Xreality Convert · Spatial 3D Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
   </head>
-  <body>
+  <body class="bg-[#010714] text-slate-100 font-sans antialiased selection:bg-blue-500 selection:text-white">
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

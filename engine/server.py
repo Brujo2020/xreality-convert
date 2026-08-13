@@ -562,9 +562,8 @@ def ledger_summary(job_id: str):
 
 def managed_glb_path(value: str) -> Path:
     source = Path(value).resolve()
-    root = JOBS_DIR.resolve()
-    if not source.is_file() or not source.is_relative_to(root) or source.suffix.lower() != ".glb":
-        raise RuntimeError("Sólo se aceptan GLB administrados por Xreality.")
+    if not source.is_file() or source.suffix.lower() != ".glb":
+        raise RuntimeError("Sólo se aceptan archivos GLB válidos.")
     validate_glb_container(source)
     return source
 

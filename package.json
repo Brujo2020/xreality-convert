@@ -1,6 +1,6 @@
 {
   "name": "xreality-convert",
-  "version": "1.4.1",
+  "version": "1.7.0",
   "description": "Conversor local de referencias a activos 3D optimizados para Xreality y spatial computing",
   "author": "Arnaud Soulas",
   "license": "MIT",
@@ -16,6 +16,7 @@
     "test:runtime": "node --test electron/hunyuan-runtime.test.cjs",
     "test:engine": "/bin/zsh engine/test.sh",
     "test:ui": "npm run build:vite && electron scripts/ui-smoke.cjs",
+    "test:all": "npm run test:runtime && node scripts/verify-full-e2e-suite.cjs && node scripts/e2e-wired-test.cjs",
     "preview": "vite preview"
   },
   "devDependencies": {

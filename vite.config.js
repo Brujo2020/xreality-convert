@@ -17,5 +17,16 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          three: ['three'],
+          phosphor: ['@phosphor-icons/react'],
+          jscad: ['@jscad/modeling', '@jscad/stl-serializer'],
+        },
+      },
+    },
   },
 });
+

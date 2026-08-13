@@ -87,6 +87,7 @@ contextBridge.exposeInMainWorld('hunyuan', {
 contextBridge.exposeInMainWorld('meshy', {
   getApiKey: () => ipcRenderer.invoke('meshy:getApiKey'),
   saveApiKey: (apiKey) => ipcRenderer.invoke('meshy:saveApiKey', apiKey),
+  getCredits: (apiKey) => ipcRenderer.invoke('meshy:getCredits', apiKey),
   generate3D: (params) => ipcRenderer.invoke('meshy:generate3D', params),
   cancel: () => ipcRenderer.invoke('meshy:cancel'),
 });

@@ -3,9 +3,10 @@
 Xreality Convert lives in [Brujo2020/xr-image-3d-creator](https://github.com/Brujo2020/xr-image-3d-creator).
 This repo is the maintained macOS fork for local AI asset creation.
 
-[![Version](https://img.shields.io/badge/version-v1.2.2-0ea5e9?style=for-the-badge)](https://github.com/Brujo2020/xr-image-3d-creator/releases/tag/v1.2.2)
-[![Release](https://img.shields.io/github/v/release/Brujo2020/xr-image-3d-creator?style=for-the-badge&label=release)](https://github.com/Brujo2020/xr-image-3d-creator/releases/tag/v1.2.2)
-[![Download DMG](https://img.shields.io/badge/download-DMG-22c55e?style=for-the-badge)](https://github.com/Brujo2020/xr-image-3d-creator/releases/download/v1.2.2/Xreality.Convert-1.2.2-arm64.dmg)
+[![Version](https://img.shields.io/badge/version-v1.6.0-0ea5e9?style=for-the-badge)](https://github.com/Brujo2020/xr-image-3d-creator/releases/tag/v1.6.0)
+[![Release](https://img.shields.io/github/v/release/Brujo2020/xr-image-3d-creator?style=for-the-badge&label=release)](https://github.com/Brujo2020/xr-image-3d-creator/releases/tag/v1.6.0)
+[![Download DMG](https://img.shields.io/badge/download-DMG-22c55e?style=for-the-badge)](https://github.com/Brujo2020/xr-image-3d-creator/releases/download/v1.6.0/Xreality.Convert-1.6.0-arm64.dmg)
+
 
 Xreality Convert is a macOS desktop app for keeping local AI asset creation in one place:
 

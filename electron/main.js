@@ -1403,6 +1403,10 @@ ipcMain.handle('meshy:saveApiKey', async (_event, apiKey) => {
   return meshyRuntime.saveApiKey(apiKey);
 });
 
+ipcMain.handle('meshy:getCredits', async (_event, apiKey) => {
+  return meshyRuntime.getCredits(apiKey);
+});
+
 ipcMain.handle('meshy:generate3D', async (_event, params) => {
   return meshyRuntime.generate3D(params, (progressPayload) => {
     if (mainWindow && !mainWindow.isDestroyed()) {

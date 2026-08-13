@@ -3,7 +3,7 @@ const fsp = require('node:fs/promises');
 const path = require('node:path');
 const https = require('node:https');
 
-const MESHY_BASE_URL = 'https://api.meshy.ai/v1';
+const MESHY_BASE_URL = 'https://api.meshy.ai';
 
 class MeshyRuntime {
   constructor(appSupportDir) {
@@ -39,9 +39,40 @@ class MeshyRuntime {
     return { ok: true, apiKey: current.apiKey };
   }
 
+  async getCredits(apiKey) {
+    const key = (apiKey || this.getApiKey()).trim();
+    if (!key) return { ok: false, credits: null, error: 'Sin API Key' };
+
+    const endpoints = [
+      '/openapi/v1/balance',
+      '/v1/balance',
+      '/openapi/v1/user/credits',
+      '/v1/user/credits',
+      '/v1/credits'
+    ];
+
+    let lastError = null;
+    for (const endpoint of endpoints) {
+      try {
+        const res = await this.makeRequest({ endpoint, apiKey: key });
+        if (res) {
+          const balance = res.balance ?? res.credits ?? res.credit ?? res.total_credits ?? (res.data && res.data.balance);
+          if (balance !== undefined && balance !== null) {
+            return { ok: true, credits: Number(balance) };
+          }
+        }
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    return { ok: false, credits: null, error: lastError?.message || 'No se pudo consultar el saldo de créditos' };
+  }
+
+
   makeRequest({ method = 'GET', endpoint, apiKey, body = null }) {
     return new Promise((resolve, reject) => {
-      const url = new URL(`${MESHY_BASE_URL}${endpoint}`);
+      const fullEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+      const url = new URL(`${MESHY_BASE_URL}${fullEndpoint}`);
       const payload = body ? JSON.stringify(body) : null;
 
       const req = https.request(
@@ -64,7 +95,7 @@ class MeshyRuntime {
               if (res.statusCode >= 200 && res.statusCode < 300) {
                 resolve(data);
               } else {
-                reject(new Error(data.message || data.error || `HTTP ${res.statusCode}`));
+                reject(new Error(data.message || data.error || `HTTP ${res.statusCode}: ${raw}`));
               }
             } catch {
               reject(new Error(`Respuesta inválida de Meshy API (HTTP ${res.statusCode}): ${raw}`));
@@ -100,19 +131,30 @@ class MeshyRuntime {
     });
   }
 
-  async pollTask(taskId, endpointType, apiKey, onProgress) {
+  async pollTask(taskId, pollPath, apiKey, onProgress) {
     const startTime = Date.now();
     const timeoutMs = 600000; // 10 min
+    let maxProgressSeen = 10;
 
     while (Date.now() - startTime < timeoutMs) {
-      const data = await this.makeRequest({ endpoint: `/${endpointType}/${taskId}`, apiKey });
+      if (this.cancelled) {
+        throw new Error('Generación cancelada por el usuario.');
+      }
+      const pollEndpoint = pollPath.startsWith('/') ? `${pollPath}/${taskId}` : `/${pollPath}/${taskId}`;
+      const data = await this.makeRequest({ endpoint: pollEndpoint, apiKey });
       const status = data.status; // 'PENDING', 'IN_PROGRESS', 'SUCCEEDED', 'FAILED'
-      const progress = data.progress || 0;
+      
+      const rawProgress = Number(data.progress || 0);
+      if (rawProgress > maxProgressSeen && rawProgress < 100) {
+        maxProgressSeen = rawProgress;
+      }
+
+      const displayPercent = status === 'SUCCEEDED' ? 100 : maxProgressSeen;
 
       if (onProgress) {
         onProgress({
-          percent: progress,
-          stage: `Generando en Meshy Cloud API (${status} ${progress}%)`,
+          percent: displayPercent,
+          stage: `Aceleración Meshy Cloud API v6 (${status === 'SUCCEEDED' ? 'Completado' : 'Procesando ' + displayPercent + '%'})`,
           taskId,
         });
       }
@@ -123,64 +165,65 @@ class MeshyRuntime {
         throw new Error(data.task_error?.message || 'La generación 3D en Meshy API ha fallado.');
       }
 
-      await new Promise((r) => setTimeout(r, 2500));
+      const pollDelay = maxProgressSeen >= 80 ? 750 : 1100;
+      await new Promise((r) => setTimeout(r, pollDelay));
     }
     throw new Error('Tiempo de espera agotado al consultar Meshy API.');
   }
 
   calculateCreditCost(params) {
-    const isImage = !!params.imageBase64;
-    const model = params.aiModel || (params.cheapValidation ? 'meshy-t2' : 'meshy-6');
-    const withTexture = params.enablePbr !== false && params.mode !== 'preview_untextured';
-
-    if (params.mode === 'remesh') return 5;
-    if (params.mode === 'rig') return 5;
-    if (params.mode === 'animation') return 3;
-    if (params.mode === 'retexture') return 10;
-
-    if (isImage) {
-      if (model === 'meshy-t2' || model === 'other') {
-        return withTexture ? 15 : 5;
-      }
-      // Meshy 6 / T1
-      return withTexture ? 30 : 20;
-    } else {
-      // Text to 3D
-      if (model === 'meshy-6') return 20;
-      return 10;
-    }
+    if (params.mode === 'retexture' || params.mode === 'refine') return 20;
+    return 5;
   }
 
   async generate3D(params, onProgress) {
+    this.cancelled = false;
     const apiKey = params.apiKey || this.getApiKey();
     if (!apiKey) {
       return { ok: false, error: 'Configura tu API Key de Meshy para continuar en modo Cloud.' };
     }
 
     try {
-      const isImageTo3D = !!params.imageBase64;
-      const endpoint = isImageTo3D ? '/image-to-3d' : '/text-to-3d';
-      const pollEndpointType = isImageTo3D ? 'image-to-3d' : 'text-to-3d';
-      const useCheap5Cr = params.cheapValidation || params.meshyMode === 'preview_5cr';
-      const aiModel = useCheap5Cr ? 'meshy-t2' : (params.aiModel || 'meshy-6');
-      const estimatedCredits = this.calculateCreditCost({ ...params, cheapValidation: useCheap5Cr });
+      const isRefineOrRetexture = params.mode === 'retexture' || params.mode === 'refine';
+      const previewTaskId = params.preview_task_id || params.taskId;
 
-      const payload = {
-        mode: params.mode || 'preview',
-        ai_model: aiModel,
-        ...(isImageTo3D
-          ? { image_url: `data:image/png;base64,${params.imageBase64}` }
-          : { prompt: params.prompt || 'Game ready 3D asset' }),
-        ...(params.preview_task_id ? { preview_task_id: params.preview_task_id } : {}),
-        art_style: params.art_style || 'realistic',
-        topology: params.topology || 'quad',
-        target_polycount: params.target_polycount || 12000,
-        origin_at: params.originAt || 'bottom',
-        auto_size: params.autoSize !== false,
-        remove_lighting: params.removeLighting !== false,
-        target_formats: ['glb', 'usdz', 'fbx'],
-        ...(useCheap5Cr ? { enable_pbr: false } : {}),
-      };
+      if (isRefineOrRetexture && !previewTaskId) {
+        return {
+          ok: false,
+          error: 'Para texturizar o refinar en Meshy Cloud, primero debes generar la vista previa 3D.',
+        };
+      }
+
+      const isImageTo3D = !!params.imageBase64 && !isRefineOrRetexture;
+      
+      let endpoint = '/v2/text-to-3d';
+      let pollPath = '/v2/text-to-3d';
+
+      if (isImageTo3D) {
+        endpoint = '/v1/image-to-3d';
+        pollPath = '/v1/image-to-3d';
+      }
+
+      const payload = isRefineOrRetexture
+        ? {
+            mode: 'refine',
+            preview_task_id: previewTaskId,
+            texture_richness: 'high',
+            ...(params.prompt ? { prompt: params.prompt } : {}),
+          }
+        : isImageTo3D
+        ? {
+            image_url: `data:image/png;base64,${params.imageBase64}`,
+            enable_pbr: false,
+          }
+        : {
+            mode: params.mode || 'preview',
+            prompt: params.prompt || 'Game ready 3D asset',
+            art_style: params.art_style || 'realistic',
+            topology: params.topology || 'quad',
+            target_polycount: params.target_polycount || 12000,
+            enable_pbr: false,
+          };
 
       if (onProgress) onProgress({ percent: 5, stage: 'Enviando tarea a Meshy Cloud API…' });
 
@@ -194,7 +237,7 @@ class MeshyRuntime {
       const taskId = createRes.result || createRes.id;
       if (!taskId) throw new Error('Meshy API no devolvió un ID de tarea válido.');
 
-      const taskResult = await this.pollTask(taskId, pollEndpointType, apiKey, onProgress);
+      const taskResult = await this.pollTask(taskId, pollPath, apiKey, onProgress);
 
       const modelUrls = taskResult.model_urls || {};
       const glbUrl = modelUrls.glb || taskResult.model_url;
@@ -219,7 +262,7 @@ class MeshyRuntime {
         thumbnailUrl: taskResult.thumbnail_url,
         faces: taskResult.polycount || params.target_polycount,
         mode: params.mode,
-        creditsUsed: estimatedCredits,
+        creditsUsed: this.calculateCreditCost(params),
         duration: (Date.now() - (params.startTime || Date.now())) / 1000,
         provider: 'meshy-api',
       };
@@ -229,6 +272,7 @@ class MeshyRuntime {
   }
 
   cancel() {
+    this.cancelled = true;
     if (this.activeRequest) {
       this.activeRequest.destroy();
       this.activeRequest = null;

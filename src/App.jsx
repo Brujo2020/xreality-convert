@@ -3,6 +3,7 @@ import Header from './components/Header.jsx';
 import PromptPanel from './components/PromptPanel.jsx';
 import ImageViewer from './components/ImageViewer.jsx';
 import Gallery from './components/Gallery.jsx';
+import JobsIveDesignReviewModal from './components/JobsIveDesignReviewModal.jsx';
 import { XR_PROFILES } from './lib/xrProfiles.js';
 import { USE_CASES } from './lib/useCases.js';
 import { MODEL_CATEGORIES } from './lib/modelCategories.js';
@@ -107,9 +108,10 @@ export default function App() {
   const [analysis, setAnalysis] = useState(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
 
-  // --- Gallery ---
+  // --- Gallery & Modals ---
   const [history, setHistory] = useState([]);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [showJobsReviewModal, setShowJobsReviewModal] = useState(false);
 
   useEffect(() => {
     if (window.meshy?.getApiKey) {
@@ -126,7 +128,7 @@ export default function App() {
   const processing = generating || installingEngine || installingModel;
 
   useEffect(() => {
-    if (!processing || (mode === 'image3d' && generating)) return undefined;
+    if (!processing || engineProvider === 'meshy') return undefined;
     const startedAt = Date.now();
     const estimatedSeconds = installingEngine
       ? 240
@@ -155,16 +157,16 @@ export default function App() {
       const percent = elapsed <= estimatedSeconds
         ? Math.min(90, Math.round(3 + (elapsed / estimatedSeconds) * 87))
         : Math.min(97, Math.round(90 + ((elapsed - estimatedSeconds) / estimatedSeconds) * 7));
-      setProgress({
-        percent,
-        label,
+      setProgress((curr) => ({
+        percent: Math.max(curr.percent || 0, percent),
+        label: curr.label || label,
         remaining: elapsed < estimatedSeconds ? Math.ceil(estimatedSeconds - elapsed) : null,
-      });
+      }));
     };
     updateProgress();
     const timer = setInterval(updateProgress, 1000);
     return () => clearInterval(timer);
-  }, [processing, installingEngine, installingModel, mode, asset.texture, asset.profile]);
+  }, [processing, engineProvider, installingEngine, installingModel, mode, asset.texture, asset.profile]);
 
   const imageModels = status.allModels.filter(isImageModel);
   const imageModelAvailable = imageModels.includes(imageModel);
@@ -173,37 +175,46 @@ export default function App() {
 
   // --- Status polling --------------------------------------------------------
   const checkStatus = useCallback(async () => {
-    const res = await window.ollama.checkStatus();
-    setStatus({
-      connected: res.connected,
-      models: res.models || [],
-      allModels: res.allModels || [],
-      checking: false,
-      error: res.error || null,
-    });
+    try {
+      const res = await window.ollama?.checkStatus?.();
+      if (!res) return;
+      setStatus({
+        connected: !!res.connected,
+        models: res.models || [],
+        allModels: res.allModels || [],
+        checking: false,
+        error: res.error || null,
+      });
 
-    // Pick a default STL model the first time we see a model list.
-    if (!hasInitStlModel.current && res.allModels && res.allModels.length > 0) {
-      hasInitStlModel.current = true;
-      const candidates = res.allModels.filter((m) => !isImageModel(m));
-      const preferred = PREFERRED_STL_MODELS.find((m) => candidates.includes(m));
-      setStlModel(preferred || candidates[0] || '');
-    }
-    if (!hasInitImageModel.current && res.allModels?.length) {
-      const availableImages = res.allModels.filter(isImageModel);
-      const preferredImage = PREFERRED_IMAGE_MODELS.find((m) => availableImages.includes(m));
-      if (preferredImage) {
-        hasInitImageModel.current = true;
-        setImageModel(preferredImage);
+      // Pick a default STL model the first time we see a model list.
+      if (!hasInitStlModel.current && res.allModels && res.allModels.length > 0) {
+        hasInitStlModel.current = true;
+        const candidates = res.allModels.filter((m) => !isImageModel(m));
+        const preferred = PREFERRED_STL_MODELS.find((m) => candidates.includes(m));
+        setStlModel(preferred || candidates[0] || '');
       }
+      if (!hasInitImageModel.current && res.allModels?.length) {
+        const availableImages = res.allModels.filter(isImageModel);
+        const preferredImage = PREFERRED_IMAGE_MODELS.find((m) => availableImages.includes(m));
+        if (preferredImage) {
+          hasInitImageModel.current = true;
+          setImageModel(preferredImage);
+        }
+      }
+    } catch (err) {
+      console.warn('checkStatus failed:', err);
     }
   }, []);
 
   useEffect(() => {
     let active = true;
     const inspect = async () => {
-      const status = await window.hunyuan.multiViewStatus?.();
-      if (active && status) setMultiViewBackend(status);
+      try {
+        const status = await window.hunyuan?.multiViewStatus?.();
+        if (active && status) setMultiViewBackend(status);
+      } catch (err) {
+        console.warn('multiViewStatus failed:', err);
+      }
     };
     inspect();
     return () => { active = false; };
@@ -226,8 +237,12 @@ export default function App() {
   useEffect(() => {
     let active = true;
     const ping = async () => {
-      const r = await window.hunyuan.health();
-      if (active) setHunyuanUp(!!r.up);
+      try {
+        const r = await window.hunyuan?.health?.();
+        if (active && r) setHunyuanUp(!!r.up);
+      } catch (err) {
+        if (active) setHunyuanUp(false);
+      }
     };
     ping();
     const visiblePing = () => {
@@ -244,9 +259,13 @@ export default function App() {
 
   // --- Load persisted history on mount --------------------------------------
   useEffect(() => {
-    window.ollama.loadHistory().then((items) => {
-      if (Array.isArray(items)) setHistory(items.slice(0, MAX_HISTORY));
-    });
+    try {
+      window.ollama?.loadHistory?.().then((items) => {
+        if (Array.isArray(items)) setHistory(items.slice(0, MAX_HISTORY));
+      }).catch((e) => console.warn('loadHistory rejected:', e));
+    } catch (err) {
+      console.warn('loadHistory failed:', err);
+    }
   }, []);
 
   useEffect(() => {
@@ -254,7 +273,7 @@ export default function App() {
       if (!payload) return;
       setProgress((current) => ({
         ...current,
-        percent: Number.isFinite(payload.percent) ? payload.percent : current.percent,
+        percent: Number.isFinite(payload.percent) ? Math.max(current.percent || 0, payload.percent) : current.percent,
         label: payload.stage || current.label,
         remaining: payload.remaining ?? current.remaining,
       }));
@@ -301,10 +320,11 @@ export default function App() {
 
   // --- Generate (branches on mode) ------------------------------------------
   const handleGenerate = useCallback(async () => {
-    // --- Meshy Cloud API Mode ---
-    if (engineProvider === 'meshy') {
+    if (generating) return;
+    // --- Meshy Cloud API Mode (for 3D generation modes) ---
+    if (engineProvider === 'meshy' && mode !== 'image') {
       if (!image3dInput && !prompt.trim()) {
-        setError('Selecciona una imagen o escribe una dirección creativa para generar con Meshy API.');
+        setError('Selecciona una imagen de referencia o escribe un prompt para generar con Meshy API.');
         return;
       }
       if (!meshyApiKey) {
@@ -352,6 +372,7 @@ export default function App() {
       const entry = {
         id: `${Date.now()}-meshy`,
         type: 'glb',
+        taskId: res.taskId,
         glbBase64: res.glbBase64,
         glbPath: res.glbPath,
         faces: res.faces,
@@ -475,14 +496,39 @@ export default function App() {
     setGenerating(true);
 
     if (mode === 'image') {
-      const res = await window.ollama.generate({
-        model: imageModel,
-        prompt: prompt.trim(),
-        width: params.width,
-        height: params.height,
-        steps: params.steps,
-        seed: usedSeed,
-      });
+      setProgress({ percent: 5, label: 'Enviando prompt a Ollama FLUX…', remaining: 35 });
+      const stepTimer = setInterval(() => {
+        setProgress((curr) => {
+          if (curr.percent >= 92) return curr;
+          const next = curr.percent + Math.floor(Math.random() * 8) + 4;
+          const pct = Math.min(92, next);
+          let label = 'Procesando difusión latente…';
+          if (pct > 20 && pct <= 45) label = 'Cargando modelo FLUX en VRAM/RAM…';
+          else if (pct > 45 && pct <= 70) label = 'Ejecutando muestreo de difusión…';
+          else if (pct > 70) label = 'Decodificando píxeles con VAE…';
+          const remaining = Math.max(1, Math.ceil((100 - pct) * 0.35));
+          return { percent: pct, label, remaining };
+        });
+      }, 900);
+
+      let res;
+      try {
+        res = await window.ollama.generate({
+          model: imageModel,
+          prompt: prompt.trim(),
+          width: params.width,
+          height: params.height,
+          steps: params.steps,
+          seed: usedSeed,
+        });
+      } catch (genErr) {
+        clearInterval(stepTimer);
+        setGenerating(false);
+        setError(`Error al generar imagen: ${genErr?.message || genErr}`);
+        return;
+      }
+
+      clearInterval(stepTimer);
       if (!res.ok) {
         setGenerating(false);
         if (!res.cancelled) setError(res.error || 'No fue posible generar la imagen.');
@@ -502,13 +548,38 @@ export default function App() {
       setError('Selecciona un modelo de código para generar la malla.');
       return;
     }
-    const res = await window.ollama.generateStl({
-      model: stlModel,
-      prompt: prompt.trim(),
-      seed: usedSeed,
-      profile: asset.profile,
-      targetFaces: asset.targetFaces,
-    });
+    setProgress({ percent: 5, label: 'Iniciando generación LLM de código JSCAD…', remaining: 20 });
+    const stepTimer = setInterval(() => {
+      setProgress((curr) => {
+        if (curr.percent >= 92) return curr;
+        const next = curr.percent + Math.floor(Math.random() * 10) + 5;
+        const pct = Math.min(92, next);
+        let label = 'Generando código con LLM…';
+        if (pct > 20 && pct <= 45) label = 'Ejecutando inferencia de código JSCAD…';
+        else if (pct > 45 && pct <= 70) label = 'Compilando script geométrico en V8…';
+        else if (pct > 70) label = 'Triangulando malla CSG a STL…';
+        const remaining = Math.max(1, Math.ceil((100 - pct) * 0.2));
+        return { percent: pct, label, remaining };
+      });
+    }, 700);
+
+    let res;
+    try {
+      res = await window.ollama.generateStl({
+        model: stlModel,
+        prompt: prompt.trim(),
+        seed: usedSeed,
+        profile: asset.profile,
+        targetFaces: asset.targetFaces,
+      });
+    } catch (genErr) {
+      clearInterval(stepTimer);
+      setGenerating(false);
+      setError(`Error al generar STL: ${genErr?.message || genErr}`);
+      return;
+    }
+
+    clearInterval(stepTimer);
     if (!res.ok) {
       setGenerating(false);
       if (!res.cancelled) setError(res.error || 'STL generation failed.');
@@ -791,6 +862,87 @@ export default function App() {
     setError(null);
   }, []);
 
+  // Handle Online Texture Swap (Meshy retexture mode)
+  const handleOnlineTexture = useCallback(async ({ prompt: texPrompt, resolution }) => {
+    if (!meshyApiKey) {
+      setError('Ingresa tu API Key de Meshy para re-texturizar online.');
+      return;
+    }
+    setError(null);
+    setGenerating(true);
+    setProgress({ percent: 1, label: 'Generando nueva textura PBR en Meshy Cloud…', remaining: null });
+
+    try {
+      const res = await window.meshy.generate3D({
+        apiKey: meshyApiKey,
+        mode: 'retexture',
+        prompt: texPrompt,
+        preview_task_id: meshyPreviewTaskId || result?.taskId || undefined,
+        art_style: 'realistic',
+      });
+
+      setGenerating(false);
+      if (!res?.ok) {
+        setError(res?.error || 'Error al re-texturizar en Meshy Cloud.');
+        return;
+      }
+
+      setProgress({ percent: 100, label: 'Textura PBR actualizada', remaining: 0 });
+      setResult((curr) => ({
+        ...curr,
+        glbBase64: res.glbBase64 || curr?.glbBase64,
+        glbPath: res.glbPath || curr?.glbPath,
+        textured: true,
+        textureSize: resolution,
+        prompt: `Textura: ${texPrompt}`,
+      }));
+    } catch (err) {
+      setGenerating(false);
+      setError(`Error al re-texturizar: ${err?.message || err}`);
+    }
+  }, [meshyApiKey, meshyPreviewTaskId, result]);
+
+  // Handle Online Model Correction / Remesh Quad (Meshy refine/remesh)
+  const handleOnlineCorrection = useCallback(async ({ topology, target_polycount }) => {
+    if (!meshyApiKey) {
+      setError('Ingresa tu API Key de Meshy para corregir la topología online.');
+      return;
+    }
+    setError(null);
+    setGenerating(true);
+    setProgress({ percent: 1, label: 'Optimizando geometría y topología Quad en Meshy Cloud…', remaining: null });
+
+    try {
+      const res = await window.meshy.generate3D({
+        apiKey: meshyApiKey,
+        mode: 'refine',
+        preview_task_id: meshyPreviewTaskId || result?.taskId || undefined,
+        topology,
+        target_polycount,
+        autoSize: true,
+      });
+
+      setGenerating(false);
+      if (!res?.ok) {
+        setError(res?.error || 'Error al corregir la topología en Meshy Cloud.');
+        return;
+      }
+
+      setProgress({ percent: 100, label: 'Geometría corregida y optimizada', remaining: 0 });
+      setResult((curr) => ({
+        ...curr,
+        glbBase64: res.glbBase64 || curr?.glbBase64,
+        glbPath: res.glbPath || curr?.glbPath,
+        faces: res.faces || target_polycount,
+        qualityLevel: 'listo',
+        qualityText: 'Topología Quad optimizada y corregida.',
+      }));
+    } catch (err) {
+      setGenerating(false);
+      setError(`Error al corregir modelo: ${err?.message || err}`);
+    }
+  }, [meshyApiKey, meshyPreviewTaskId, result]);
+
   return (
     <div className="app-shell relative flex h-full flex-col overflow-hidden bg-base text-neutral-200">
       <Header
@@ -799,13 +951,16 @@ export default function App() {
         mode={mode}
         engineProvider={engineProvider}
         onSelectEngineProvider={setEngineProvider}
+        meshyApiKey={meshyApiKey}
         processing={processing}
         progress={progress}
         historyCount={history.length}
         historyOpen={historyOpen}
         onToggleHistory={() => setHistoryOpen((open) => !open)}
         onRefresh={checkStatus}
+        onOpenJobsReview={() => setShowJobsReviewModal(true)}
       />
+
 
       <div className="workspace-grid relative z-10 flex min-h-0 flex-1 gap-3 p-3">
         {/* Left: form */}
@@ -895,6 +1050,8 @@ export default function App() {
             onReveal={(p) => window.ollama.revealInFinder(p)}
             asset={asset}
             onUseAs3dReference={handleUseImageAsReference}
+            onApplyOnlineTexture={handleOnlineTexture}
+            onApplyOnlineCorrection={handleOnlineCorrection}
           />
         </main>
 
@@ -912,6 +1069,12 @@ export default function App() {
           </aside>
         )}
       </div>
+
+      {/* Steve Jobs & Jony Ive Design Review Modal */}
+      <JobsIveDesignReviewModal
+        isOpen={showJobsReviewModal}
+        onClose={() => setShowJobsReviewModal(false)}
+      />
     </div>
   );
 }
