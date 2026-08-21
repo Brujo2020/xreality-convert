@@ -1,6 +1,6 @@
 {
   "name": "xreality-convert",
-  "version": "1.7.0",
+  "version": "2.0.0",
   "description": "Conversor local de referencias a activos 3D optimizados para Xreality y spatial computing",
   "author": "Arnaud Soulas",
   "license": "MIT",
