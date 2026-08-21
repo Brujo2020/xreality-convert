@@ -55,7 +55,11 @@ def audit(repo_root: Path) -> dict:
             plans[category] = {
                 "material": plan["material"],
                 "quality_tier": plan["quality_tier"],
-                "required_parts": len(plan["semantic_contract"].get("required_parts", [])),
+                "required_parts": len(plan["semantic_contract"].get("expected_parts", [])),
+                "critical_parts": len(plan["semantic_contract"].get("critical_part_names", [])),
+                "semantic_evidence_status": plan["semantic_contract"].get(
+                    "semantic_evidence_status", "not_measured"
+                ),
             }
     except Exception as exc:  # Report an audit failure without hiding it.
         error = f"asset_director_unavailable:{exc}"

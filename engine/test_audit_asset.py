@@ -19,6 +19,10 @@ class AuditAssetTests(unittest.TestCase):
         self.assertTrue(all(item["present"] for item in report["controls"].values()))
         self.assertIn("device_runtime_execution", report["not_measured"])
         self.assertGreater(len(report["asset_director"]["plans"]), 5)
+        crane = report["asset_director"]["plans"]["crane"]
+        self.assertGreaterEqual(crane["required_parts"], 7)
+        self.assertGreaterEqual(crane["critical_parts"], 7)
+        self.assertEqual(crane["semantic_evidence_status"], "not_measured")
 
     def test_missing_engine_controls_fail_closed(self):
         with tempfile.TemporaryDirectory() as directory:

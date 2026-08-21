@@ -477,12 +477,12 @@ MATERIAL_CONTRACTS = {
         "recommended_maps": ["normal"],
         "extensions": {
             "KHR_materials_clearcoat": {
-                "clearcoatFactor": 0.72,
-                "clearcoatRoughnessFactor": 0.18,
+                "clearcoatFactor": 0.12,
+                "clearcoatRoughnessFactor": 0.45,
             }
         },
         "metallic_range": [0.0, 0.15],
-        "roughness_range": [0.22, 0.72],
+        "roughness_range": [0.38, 0.82],
         "risk": "metallic_paint_without_dielectric_coat",
     },
     "rust": {

@@ -28,14 +28,16 @@ export default function XrProductionPanel({ asset, setAsset, setSteps3d, disable
   const update = (patch) => setAsset((current) => ({ ...current, ...patch }));
   const selectProfile = (id) => {
     const profile = XR_PROFILES[id];
-    update({
+    setAsset((current) => ({
+      ...current,
       profile: id,
       octree: profile.octree,
-      texture: profile.texture,
       targetFaces: profile.targetFaces,
-      textureSize: profile.textureSize,
+      // Texturing is an explicit delivery choice, independent from geometry.
+      texture: current.texture === true,
+      textureSize: current.textureSize || profile.textureSize,
       paintBackend: profile.paintBackend,
-    });
+    }));
     setSteps3d(profile.steps);
   };
   const current = XR_PROFILES[asset.profile];
@@ -49,7 +51,7 @@ export default function XrProductionPanel({ asset, setAsset, setSteps3d, disable
         </div>
         <div className="rounded-lg border border-cyan-300/15 bg-cyan-300/5 px-2 py-1 text-right">
           <span className="block font-mono text-[9px] text-cyan-200">{Math.round(asset.targetFaces / 1000)}K</span>
-          <span className="block text-[7px] uppercase tracking-wider text-slate-500">{asset.textureSize === '1K' ? 'rápido · 1K' : asset.textureSize === '2K' ? 'maestro · 2K' : 'sin material'}</span>
+          <span className="block text-[7px] uppercase tracking-wider text-slate-500">{!asset.texture ? 'sin textura' : asset.textureSize === '1K' ? 'rápido · 1K' : 'maestro · 2K'}</span>
         </div>
       </div>
 
@@ -85,7 +87,7 @@ export default function XrProductionPanel({ asset, setAsset, setSteps3d, disable
           <div className="min-w-0"><p className="text-[10px] font-medium text-slate-200">{current.label}</p><p className="truncate text-[8px] text-slate-500">{current.description}</p></div>
         </div>
         {asset.profile === 'maxquality' && <p className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/5 px-2.5 py-2 text-[8px] leading-relaxed text-amber-200/75">Maestro es fail-closed: humanos, animales, vehículos, grúas y arquitectura pueden exigir 2–3 vistas reales. Las vistas sintéticas no cuentan como evidencia.</p>}
-        {asset.profile === 'lowpoly' && <p className="mb-3 rounded-lg border border-emerald-300/15 bg-emerald-300/5 px-2.5 py-2 text-[8px] leading-relaxed text-emerald-200/75">Low Poly conserva PBR 1K y deriva la entrega desde una malla validada; ya no elimina la textura.</p>}
+        {asset.profile === 'lowpoly' && <p className="mb-3 rounded-lg border border-emerald-300/15 bg-emerald-300/5 px-2.5 py-2 text-[8px] leading-relaxed text-emerald-200/75">Low Poly deriva la entrega desde una malla validada; el texturizado PBR es opcional.</p>}
         {asset.profile === 'vrready' && <p className="mb-3 rounded-lg border border-cyan-300/15 bg-cyan-300/5 px-2.5 py-2 text-[8px] leading-relaxed text-cyan-200/75">VR Ready limita geometría y material para evitar caídas de rendimiento manteniendo lectura visual.</p>}
         {asset.profile === 'smart' && <p className="mb-3 rounded-lg border border-sky-300/15 bg-sky-300/5 px-2.5 py-2 text-[8px] leading-relaxed text-sky-200/75">Smart detecta la memoria unificada del Mac y aplica una sola ruta Shape → Paint, con límites de seguridad.</p>}
         <div className="grid grid-cols-2 gap-2">
@@ -96,10 +98,14 @@ export default function XrProductionPanel({ asset, setAsset, setSteps3d, disable
             </select>
           </label>
           <label className="text-[9px] uppercase tracking-wider text-slate-500">
-            Material
-            <select value={asset.textureSize} disabled={disabled} onChange={(event) => update({ textureSize: event.target.value, texture: event.target.value !== 'Sin textura' })} className="field-modern mt-1.5 !py-2">
-              <option>Sin textura</option><option value="1K">1K · Rápido</option><option value="2K">2K · Maestro</option>
+            Resolución PBR
+            <select value={asset.textureSize || '1K'} disabled={disabled || !asset.texture} onChange={(event) => update({ textureSize: event.target.value })} className="field-modern mt-1.5 !py-2">
+              <option value="1K">1K · Rápido</option><option value="2K">2K · Maestro</option>
             </select>
+          </label>
+          <label className="col-span-2 flex cursor-pointer items-start gap-2 rounded-xl border border-cyan-300/15 bg-cyan-300/[0.05] px-3 py-2.5 text-[9px] text-slate-300">
+            <input type="checkbox" checked={asset.texture === true} disabled={disabled} onChange={(event) => update({ texture: event.target.checked })} className="mt-0.5 accent-cyan-400" />
+            <span><strong className="block uppercase tracking-wider text-cyan-200">Generar texturas PBR (opcional)</strong><span className="mt-1 block leading-relaxed text-slate-500">Desactívalo para generar sólo la malla. GLB, STL y OpenUSD (.usdz) siguen disponibles.</span></span>
           </label>
           <label className="col-span-2 text-[9px] uppercase tracking-wider text-slate-500">
             <span className="flex items-center gap-1.5"><Palette size={13} weight="duotone" className="text-sky-300" aria-hidden="true" />Material dominante</span>

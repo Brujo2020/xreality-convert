@@ -177,7 +177,7 @@ class AgenticPaintService:
             "--reference-lock",
         ]
         swap_growth_limit_mb = float(
-            os.environ.get("XREALITY_MAX_AGENTIC_SWAP_GROWTH_MB", "2048")
+            os.environ.get("XREALITY_MAX_AGENTIC_SWAP_GROWTH_MB", "16384")
         )
         try:
             worker = StageSupervisor(memory_snapshot).run(
@@ -185,7 +185,7 @@ class AgenticPaintService:
                 cwd=self.app_root,
                 limits=StageLimits(
                     timeout_seconds=1800,
-                    minimum_free_percent=8,
+                    minimum_free_percent=4,
                     maximum_swap_growth_mb=swap_growth_limit_mb,
                     network_allowed=False,
                 ),

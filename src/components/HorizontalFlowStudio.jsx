@@ -10,7 +10,7 @@ import {
   Scan
 } from '@phosphor-icons/react';
 
-export default function HorizontalFlowStudio({ percent = 45, mode = 'image3d', isMeshy = false, label = '' }) {
+export default function HorizontalFlowStudio({ percent = 45, mode = 'image3d', isMeshy = false, label = '', textureEnabled = true }) {
   const steps = isMeshy ? [
     {
       id: 1,
@@ -137,40 +137,40 @@ export default function HorizontalFlowStudio({ percent = 45, mode = 'image3d', i
   ] : [
     {
       id: 1,
-      name: '01. Recorte',
-      subtitle: 'Sujeto & Alpha',
+      name: '01. Ingesta & Sujeto',
+      subtitle: 'Contrato Alpha & P0',
       pctThreshold: 20,
       icon: Camera,
       color: 'from-blue-500 to-cyan-400',
     },
     {
       id: 2,
-      name: '02. Malla Octree',
-      subtitle: 'Geometría Vóxel',
-      pctThreshold: 55,
+      name: '02. Shape & FlexiCubes',
+      subtitle: 'Vóxel MLX + Aristas Vivas',
+      pctThreshold: 50,
       icon: Cube,
       color: 'from-cyan-400 to-teal-400',
     },
     {
       id: 3,
-      name: '03. 6-Vistas',
-      subtitle: 'Multivista 360°',
-      pctThreshold: 80,
+      name: '03. Partes & SmartUV',
+      subtitle: 'PartDecomposer + Islas UV',
+      pctThreshold: 75,
       icon: Scan,
       color: 'from-teal-400 to-indigo-500',
     },
     {
       id: 4,
-      name: '04. Texturado',
-      subtitle: 'Mapas PBR 6V',
-      pctThreshold: 95,
-      icon: PaintBrush,
+      name: textureEnabled ? '04. Pintado Regional' : '04. Sin Textura',
+      subtitle: textureEnabled ? 'PBR Multi-Material 2K' : 'Malla limpia sin shader',
+      pctThreshold: 90,
+      icon: textureEnabled ? PaintBrush : Cube,
       color: 'from-indigo-500 to-purple-500',
     },
     {
       id: 5,
-      name: '05. Audit Gate',
-      subtitle: 'Sello USDZ/STL',
+      name: '05. USDZ & AssetGraph',
+      subtitle: 'Sello RealityKit + LODs',
       pctThreshold: 100,
       icon: ShieldCheck,
       color: 'from-purple-500 to-pink-500',
@@ -191,15 +191,15 @@ export default function HorizontalFlowStudio({ percent = 45, mode = 'image3d', i
             </span>
             <h3 className="text-xs font-bold text-white flex items-center gap-2 font-outfit">
               {isMeshy
-                ? 'Meshy Cloud API v6 Engine'
+                ? 'Meshy Cloud API v7 Engine'
                 : mode === 'image'
                 ? 'Ollama FLUX Latent Diffusion Engine'
                 : mode === 'stl'
                 ? 'Ollama LLM + JSCAD CSG Engine'
                 : 'Apple Silicon MLX Local Engine'}
             </h3>
-            <p className="mt-0.5 font-mono text-[9px] font-bold text-amber-300 flex items-center gap-1.5">
-              {percent < 100 && <SpinnerGap size={12} className="animate-spin text-amber-300 shrink-0" />}
+            <p className="mt-0.5 font-mono text-[9px] font-bold text-cyan-300/90 flex items-center gap-1.5">
+              {percent < 100 && <SpinnerGap size={12} className="animate-spin text-cyan-300 shrink-0" />}
               <span className="truncate">{label || (percent >= 100 ? '✓ Proceso completado con éxito' : '⚡ Ejecutando orquestación 3D en tiempo real…')}</span>
             </p>
           </div>
@@ -224,7 +224,7 @@ export default function HorizontalFlowStudio({ percent = 45, mode = 'image3d', i
                 isDone
                   ? 'border-emerald-400/40 bg-emerald-950/25'
                   : isCurrent
-                  ? 'border-amber-400/60 bg-amber-950/35 shadow-[0_0_20px_rgba(245,158,11,0.25)]'
+                  ? 'border-amber-400/[0.14] bg-amber-950/[0.14] shadow-[0_0_12px_rgba(245,158,11,0.06)]'
                   : 'border-white/10 bg-black/40'
               }`}
             >
@@ -239,7 +239,7 @@ export default function HorizontalFlowStudio({ percent = 45, mode = 'image3d', i
                     <CheckCircle size={11} weight="fill" /> OK
                   </span>
                 ) : isCurrent ? (
-                  <span className="flex items-center gap-1 rounded-full bg-amber-400/20 border border-amber-400/40 px-2 py-0.5 text-[9px] font-mono font-extrabold text-amber-300">
+                  <span className="flex items-center gap-1 rounded-full bg-amber-400/[0.08] border border-amber-400/[0.14] px-2 py-0.5 text-[9px] font-mono font-bold text-amber-200/80">
                     <SpinnerGap size={11} className="animate-spin" /> RUN
                   </span>
                 ) : (

@@ -1002,6 +1002,8 @@ async function startHunyuanServerOnce() {
         PYTHONUNBUFFERED: '1',
         HF_HUB_OFFLINE: '0',
         TRANSFORMERS_OFFLINE: '0',
+        XREALITY_MAX_SHAPE_SWAP_GROWTH_MB: '16384',
+        XREALITY_MAX_AGENTIC_SWAP_GROWTH_MB: '16384',
         XREALITY_VALIDATION_WORKERS: String(executionPlan.validationWorkers),
         XREALITY_MLX_CACHE_MIB: String(executionPlan.cacheMiB),
         HF_HUB_CACHE: HUGGINGFACE_HUB_CACHE,
@@ -1265,8 +1267,9 @@ ipcMain.handle('hunyuan:generate3D', async (event, params) => {
     const { job_id } = JSON.parse(startRes.body);
     hunyuanActiveJobId = job_id;
 
-    // Poll quickly during queue/startup, then at a steady sub-second cadence.
+    // Poll quickly during queue/startup, then at a steady cadence.
     let pollDelay = 300;
+    let consecutivePollErrors = 0;
     for (;;) {
       if (hunyuanCancelled) {
         await hunyuanCancelCurrentJob();
@@ -1274,12 +1277,41 @@ ipcMain.handle('hunyuan:generate3D', async (event, params) => {
         return { ok: false, cancelled: true };
       }
       await new Promise((r) => setTimeout(r, pollDelay));
-      const s = await hunyuanRequest({
-        method: 'GET',
-        pathName: `/status/${job_id}`,
-        timeout: 10000,
-      });
-      const js = JSON.parse(s.body);
+
+      let s;
+      try {
+        s = await hunyuanRequest({
+          method: 'GET',
+          pathName: `/status/${job_id}`,
+          timeout: 60000,
+        });
+        consecutivePollErrors = 0;
+      } catch (pollErr) {
+        consecutivePollErrors += 1;
+        console.warn(`[hunyuan] status poll exception (${consecutivePollErrors}): ${pollErr.message}`);
+        // If Python backend is busy calculating dense MLX / decimation / textures, DO NOT ABORT!
+        if (consecutivePollErrors < 60) {
+          pollDelay = 1500;
+          continue;
+        }
+        throw pollErr;
+      }
+
+      if (s.statusCode !== 200) {
+        console.warn(`[hunyuan] status poll returned HTTP ${s.statusCode}, retrying...`);
+        pollDelay = 1500;
+        continue;
+      }
+
+      let js;
+      try {
+        js = JSON.parse(s.body);
+      } catch (parseErr) {
+        console.warn(`[hunyuan] status poll JSON parse error, retrying...`);
+        pollDelay = 1000;
+        continue;
+      }
+
       pollDelay = js.status === 'queued' ? 300 : 750;
       event.sender.send('hunyuan:progress', {
         jobId: job_id,
@@ -1289,11 +1321,22 @@ ipcMain.handle('hunyuan:generate3D', async (event, params) => {
         remaining: null,
         status: js.status,
       });
+
       if (js.status === 'done') {
         hunyuanActiveJobId = null;
+        let glbBase64 = null;
+        if (js.glb_path && fs.existsSync(js.glb_path)) {
+          try {
+            glbBase64 = fs.readFileSync(js.glb_path).toString('base64');
+          } catch (readErr) {
+            console.warn('[hunyuan] Failed to read glb to base64:', readErr.message);
+          }
+        }
         return {
           ok: true,
           glbPath: js.glb_path,
+          glbBase64,
+          usdzPath: js.usdz_path || null,
           faces: js.faces,
           duration: js.elapsed,
           reportPath: js.report_path,
@@ -1315,6 +1358,11 @@ ipcMain.handle('hunyuan:generate3D', async (event, params) => {
         return { ok: false, error: js.error || 'Génération 3D échouée.' };
       }
       if (js.status === 'unknown') {
+        consecutivePollErrors += 1;
+        if (consecutivePollErrors < 10) {
+          pollDelay = 1000;
+          continue;
+        }
         hunyuanActiveJobId = null;
         return { ok: false, error: 'Job 3D introuvable.' };
       }

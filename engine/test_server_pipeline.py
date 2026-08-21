@@ -491,23 +491,24 @@ class GetPipelineTests(unittest.TestCase):
             self.assertTrue(report["degraded"])
             self.assertEqual(report["visual_attention"], ["paint_loss"])
 
-    def test_premium_texture_flow_rejects_fragmented_native_paint(self):
+    def test_premium_texture_flow_handles_native_paint_validation(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "result.glb"
             mesh = mock.Mock()
             mesh.export.side_effect = lambda path: Path(path).write_bytes(b"shape")
             service = mock.Mock()
-            service.run.side_effect = lambda **kwargs: Path(kwargs["output_glb_path"]).write_bytes(b"paint") or {"passed": True}
+            service.run.side_effect = lambda **kwargs: (Path(kwargs["output_glb_path"]).write_bytes(b"paint"), {"passed": True})[1]
             with mock.patch.object(server, "PaintService", return_value=service), mock.patch.object(
-                server, "validate_native_paint_glb", side_effect=RuntimeError("native_paint_gate_failed")
+                server, "validate_native_paint_glb", return_value={"gate": {"passed": False, "reasons": ["palette_shift"]}}
             ) as native_gate:
-                report, _ = server.apply_texture_to_mesh(
-                    mesh, "reference.png", 2048, output, category="animal", profile="xreal"
-                )
-            self.assertEqual(output.read_bytes(), b"shape")
-            self.assertEqual(report["backend"], "geometry-checkpoint")
+                with mock.patch.object(server, "apply_material_features", return_value={"applied": True, "extensions": []}), mock.patch.object(server, "validate_material_contract", return_value={"passed": True, "premium_ready": True}):
+                    report, _ = server.apply_texture_to_mesh(
+                        mesh, "reference.png", 2048, output, category="animal", profile="xreal"
+                    )
+            self.assertEqual(output.read_bytes(), b"paint")
+            self.assertEqual(report["backend"], "hunyuan-fast")
             self.assertTrue(report["degraded"])
-            self.assertTrue(native_gate.call_args.kwargs["fail_closed"])
+            self.assertFalse(native_gate.call_args_list[0].kwargs["fail_closed"])
 
     def test_texture_flow_can_use_isolated_agentic_quality_backend(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -605,7 +606,7 @@ class GetPipelineTests(unittest.TestCase):
             self.assertEqual(report["backend"], "geometry-checkpoint")
             self.assertEqual(len(report["fallback_chain"]), 2)
 
-    def test_material_validation_exception_delivers_geometry_checkpoint(self):
+    def test_material_validation_warning_preserves_painted_mesh(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "result.glb"
             mesh = mock.Mock()
@@ -627,9 +628,10 @@ class GetPipelineTests(unittest.TestCase):
                     paint_backend="fast", profile="mobile"
                 )
 
-            self.assertEqual(output.read_bytes(), b"shape")
-            self.assertEqual(report["backend"], "geometry-checkpoint")
-            self.assertIn("material_validation_error", report["fallback_chain"][-1]["error"])
+            self.assertEqual(output.read_bytes(), b"fast")
+            self.assertTrue(report["passed"])
+            self.assertTrue(report["degraded"])
+            self.assertIn("material_enhancement_skipped", report["fallback_chain"][-1]["warning"])
 
     def test_release_shape_pipeline_clears_global_and_mlx_cache(self):
         pipeline = object()

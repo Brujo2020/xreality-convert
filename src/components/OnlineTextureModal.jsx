@@ -13,7 +13,7 @@ const PRESET_TEXTURES = [
 export default function OnlineTextureModal({ isOpen, onClose, onApplyTexture, generating }) {
   const [selectedPreset, setSelectedPreset] = useState('chrome');
   const [customPrompt, setCustomPrompt] = useState('');
-  const [resolution, setResolution] = useState('2K');
+  const [resolution, setResolution] = useState('2k');
 
   if (!isOpen) return null;
 
@@ -41,7 +41,7 @@ export default function OnlineTextureModal({ isOpen, onClose, onApplyTexture, ge
                 Texturizado & Swapping de Materiales Online
               </span>
               <h2 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
-                Cambiar Textura del Modelo (Meshy 10cr)
+                Cambiar Textura del Modelo (Meshy API)
               </h2>
             </div>
           </div>
@@ -98,7 +98,7 @@ export default function OnlineTextureModal({ isOpen, onClose, onApplyTexture, ge
           <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/40 p-3">
             <span className="text-xs font-medium text-slate-200">Resolución de Textura PBR</span>
             <div className="flex gap-1.5">
-              {['1K', '2K', '4K'].map((res) => (
+              {['2k', '4k', '8k'].map((res) => (
                 <button
                   key={res}
                   type="button"
@@ -109,7 +109,7 @@ export default function OnlineTextureModal({ isOpen, onClose, onApplyTexture, ge
                       : 'bg-white/5 text-slate-400 hover:text-white'
                   }`}
                 >
-                  {res}
+                  {res.toUpperCase()}
                 </button>
               ))}
             </div>
@@ -119,7 +119,7 @@ export default function OnlineTextureModal({ isOpen, onClose, onApplyTexture, ge
         {/* Footer */}
         <div className="flex items-center justify-between border-t border-white/10 pt-4">
           <span className="font-mono text-[9px] text-amber-300/80 uppercase tracking-wider">
-            Costo: 🎨 10 créditos Meshy API
+            Costo: 🎨 {resolution === '8k' ? '15' : '10'} créditos Meshy API
           </span>
           <button
             onClick={handleApply}

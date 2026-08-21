@@ -4,9 +4,11 @@ import PromptPanel from './components/PromptPanel.jsx';
 import ImageViewer from './components/ImageViewer.jsx';
 import Gallery from './components/Gallery.jsx';
 import JobsIveDesignReviewModal from './components/JobsIveDesignReviewModal.jsx';
+import CommandPalette from './components/CommandPalette.jsx';
 import { XR_PROFILES } from './lib/xrProfiles.js';
 import { USE_CASES } from './lib/useCases.js';
 import { MODEL_CATEGORIES } from './lib/modelCategories.js';
+import { sounds } from './lib/soundEffects.js';
 
 const IMAGE_MODEL = 'x/z-image-turbo:latest';
 const PREFERRED_IMAGE_MODELS = ['x/flux2-klein:latest', 'x/flux2-klein', IMAGE_MODEL];
@@ -20,7 +22,7 @@ function resolveAssetPreset(category, profileId) {
     profile: profileId,
     octree: semanticDefault ? category.octree : Math.min(category.octree, profile.octree),
     targetFaces: semanticDefault ? category.targetFaces : Math.min(category.targetFaces, profile.targetFaces),
-    texture: profile.texture,
+    texture: false,
     textureSize: semanticDefault ? category.textureSize || profile.textureSize : profile.textureSize,
     paintBackend: semanticDefault ? category.paintBackend || profile.paintBackend : profile.paintBackend,
   };
@@ -87,7 +89,7 @@ export default function App() {
   const [backgroundMode, setBackgroundMode] = useState('auto');
   const [subjectPadding, setSubjectPadding] = useState(MODEL_CATEGORIES.industrial.padding);
   const [stlMm, setStlMm] = useState(60); // target longest-axis size for STL export
-  const [asset, setAsset] = useState({ profile: 'xreal', ...XR_PROFILES.xreal });
+  const [asset, setAsset] = useState({ profile: 'xreal', ...XR_PROFILES.xreal, texture: true });
   const [hunyuanUp, setHunyuanUp] = useState(false);
   const [installingEngine, setInstallingEngine] = useState(false);
   const [installingModel, setInstallingModel] = useState(false);
@@ -99,6 +101,10 @@ export default function App() {
   const [meshyTopology, setMeshyTopology] = useState('quad');
   const [meshyTargetPolycount, setMeshyTargetPolycount] = useState(12000);
   const [meshyPreviewTaskId, setMeshyPreviewTaskId] = useState('');
+  const [meshyAiModel, setMeshyAiModel] = useState('latest');
+  const [meshyUltraMode, setMeshyUltraMode] = useState(false);
+  const [meshyTextureResolution, setMeshyTextureResolution] = useState('2k');
+  const [meshyShouldTexture, setMeshyShouldTexture] = useState(true);
 
   // --- Generation state ---
   const [generating, setGenerating] = useState(false);
@@ -108,10 +114,68 @@ export default function App() {
   const [analysis, setAnalysis] = useState(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
 
-  // --- Gallery & Modals ---
+  // --- Gallery & Modals & Preferences ---
   const [history, setHistory] = useState([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [showJobsReviewModal, setShowJobsReviewModal] = useState(false);
+  const [lang, setLang] = useState(localStorage.getItem('xr_lang') || 'es');
+  const [soundMuted, setSoundMuted] = useState(sounds.isMuted());
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [externalAction, setExternalAction] = useState(null);
+
+  const handleToggleSound = useCallback(() => {
+    const muted = sounds.toggleMute();
+    setSoundMuted(muted);
+  }, []);
+
+  const handleSetLang = useCallback((nextLang) => {
+    setLang(nextLang);
+    localStorage.setItem('xr_lang', nextLang);
+  }, []);
+
+  // Global Keyboard Shortcuts Listener
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const isInput = e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable;
+
+      // Cmd+K or Ctrl+K -> Command Palette
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen((open) => !open);
+        return;
+      }
+
+      if (isInput) return; // Do not trigger shortcuts when typing
+
+      if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        setExternalAction({ type: 'camera', payload: 'toggle_turntable' });
+      } else if (e.key === '1') {
+        setExternalAction({ type: 'camera', payload: 'front' });
+      } else if (e.key === '2') {
+        setExternalAction({ type: 'camera', payload: 'right' });
+      } else if (e.key === '3') {
+        setExternalAction({ type: 'camera', payload: 'back' });
+      } else if (e.key === '4') {
+        setExternalAction({ type: 'camera', payload: 'left' });
+      } else if (e.key === '5') {
+        setExternalAction({ type: 'camera', payload: 'top' });
+      } else if (e.key === '6') {
+        setExternalAction({ type: 'camera', payload: 'bottom' });
+      } else if (e.key === '0') {
+        setExternalAction({ type: 'camera', payload: 'iso' });
+      } else if (e.key.toLowerCase() === 'w') {
+        setExternalAction({ type: 'shading', payload: 'wireframe' });
+      } else if (e.key.toLowerCase() === 'c') {
+        setExternalAction({ type: 'shading', payload: 'clay' });
+      } else if (e.key.toLowerCase() === 'p') {
+        setExternalAction({ type: 'shading', payload: 'lit' });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   useEffect(() => {
     if (window.meshy?.getApiKey) {
@@ -120,7 +184,6 @@ export default function App() {
       });
     }
   }, []);
-
 
   const hasInitStlModel = useRef(false);
   const hasInitImageModel = useRef(false);
@@ -156,11 +219,11 @@ export default function App() {
       const elapsed = (Date.now() - startedAt) / 1000;
       const percent = elapsed <= estimatedSeconds
         ? Math.min(90, Math.round(3 + (elapsed / estimatedSeconds) * 87))
-        : Math.min(97, Math.round(90 + ((elapsed - estimatedSeconds) / estimatedSeconds) * 7));
+        : Math.min(98, Math.round(90 + ((elapsed - estimatedSeconds) / Math.max(estimatedSeconds * 0.8, 20)) * 8));
       setProgress((curr) => ({
         percent: Math.max(curr.percent || 0, percent),
         label: curr.label || label,
-        remaining: elapsed < estimatedSeconds ? Math.ceil(estimatedSeconds - elapsed) : null,
+        remaining: elapsed < estimatedSeconds ? Math.ceil(estimatedSeconds - elapsed) : Math.max(1, Math.ceil((100 - (curr.percent || percent)) * 0.6)),
       }));
     };
     updateProgress();
@@ -337,11 +400,20 @@ export default function App() {
 
       let res;
       try {
+        let imageUrls = undefined;
+        if (image3dInput && Object.keys(multiViewInputs).length > 0) {
+          imageUrls = [
+            `data:image/png;base64,${image3dInput.base64}`,
+            ...Object.values(multiViewInputs).map(img => `data:image/png;base64,${img.base64}`)
+          ].slice(0, 4);
+        }
+
         res = await window.meshy.generate3D({
           apiKey: meshyApiKey,
           mode: meshyMode,
           prompt: prompt.trim() || image3dInput?.name || 'Game ready asset',
-          imageBase64: image3dInput?.base64,
+          imageBase64: imageUrls ? undefined : image3dInput?.base64,
+          image_urls: imageUrls,
           preview_task_id: meshyMode === 'refine' ? meshyPreviewTaskId : undefined,
           art_style: 'realistic',
           topology: meshyTopology,
@@ -349,6 +421,10 @@ export default function App() {
           originAt: 'bottom',
           autoSize: true,
           removeLighting: true,
+          ai_model: meshyAiModel,
+          ultra_mode: meshyUltraMode,
+          texture_resolution: meshyTextureResolution,
+          should_texture: meshyShouldTexture,
         });
       } catch (genError) {
         setGenerating(false);
@@ -365,24 +441,28 @@ export default function App() {
       setProgress({ percent: 100, label: 'Activo 3D Meshy completado', remaining: 0 });
       setGenerating(false);
 
-      if (res.mode === 'preview' && res.taskId) {
-        setMeshyPreviewTaskId(res.taskId);
+      if (res.taskId) {
+        setMeshyPreviewTaskId(res.previewTaskId || res.taskId);
       }
 
       const entry = {
         id: `${Date.now()}-meshy`,
         type: 'glb',
         taskId: res.taskId,
+        previewTaskId: res.previewTaskId || res.taskId,
         glbBase64: res.glbBase64,
         glbPath: res.glbPath,
+        modelUrls: res.modelUrls,
+        textureUrls: res.textureUrls,
         faces: res.faces,
         duration: res.duration,
-        textured: true,
+        textured: res.textured !== false,
+        textureSize: res.textureResolution ? res.textureResolution.toUpperCase() : 'PBR 2K',
         profile: meshyTopology === 'quad' ? 'lowpoly' : asset.profile,
         targetFaces: meshyTargetPolycount,
         prompt: prompt.trim() || image3dInput?.name || 'Meshy Asset',
         inputDataUrl: image3dInput?.dataUrl,
-        model: `Meshy API v6 (${res.mode})`,
+        model: `Meshy API v7 (${res.mode})`,
         provider: 'meshy',
         createdAt: Date.now(),
         filePath: null,
@@ -470,9 +550,9 @@ export default function App() {
         materialHint: res.material || asset.materialHint || 'auto',
         artDirector: res.artDirector || null,
         buffaloStrategy: res.buffaloStrategy || null,
-        scale: asset.scale,
         prompt: image3dInput.name, // shown as the label
         inputDataUrl: image3dInput.dataUrl,
+        multiViewImages: res.multiViewImages || multiViewImages || {},
         model: 'hunyuan3d-2.1-mlx',
         category: modelCategory,
         guidance: guidance3d,
@@ -481,7 +561,7 @@ export default function App() {
         filePath: null,
       };
       setResult(entry);
-      const { glbBase64, inputDataUrl, ...light } = entry;
+      const { glbBase64, inputDataUrl, multiViewImages: _mv, ...light } = entry;
       persistHistory([light, ...history].slice(0, MAX_HISTORY));
       return;
     }
@@ -497,19 +577,32 @@ export default function App() {
 
     if (mode === 'image') {
       setProgress({ percent: 5, label: 'Enviando prompt a Ollama FLUX…', remaining: 35 });
+      let subStep = 0;
       const stepTimer = setInterval(() => {
         setProgress((curr) => {
-          if (curr.percent >= 92) return curr;
-          const next = curr.percent + Math.floor(Math.random() * 8) + 4;
-          const pct = Math.min(92, next);
-          let label = 'Procesando difusión latente…';
-          if (pct > 20 && pct <= 45) label = 'Cargando modelo FLUX en VRAM/RAM…';
+          let pct;
+          let label = curr.label;
+          if (curr.percent < 90) {
+            const next = curr.percent + Math.floor(Math.random() * 8) + 4;
+            pct = Math.min(90, next);
+          } else {
+            subStep += 1;
+            // Smoothly and dynamically tick 90% -> 91% -> 92% -> 93% -> 94% -> 95% -> 96% -> 97% -> 98%
+            pct = Math.min(98, curr.percent + (subStep % 2 === 0 ? 1 : 0));
+          }
+
+          if (pct <= 20) label = 'Enviando prompt a Ollama FLUX…';
+          else if (pct > 20 && pct <= 45) label = 'Cargando modelo FLUX en VRAM/RAM…';
           else if (pct > 45 && pct <= 70) label = 'Ejecutando muestreo de difusión…';
-          else if (pct > 70) label = 'Decodificando píxeles con VAE…';
+          else if (pct > 70 && pct <= 85) label = 'Decodificando píxeles con VAE…';
+          else if (pct > 85 && pct <= 92) label = 'Optimizando matriz de color y contraste…';
+          else if (pct > 92 && pct <= 95) label = 'Refinando resolución y detalles…';
+          else if (pct > 95) label = 'Finalizando empaquetado de imagen…';
+
           const remaining = Math.max(1, Math.ceil((100 - pct) * 0.35));
           return { percent: pct, label, remaining };
         });
-      }, 900);
+      }, 800);
 
       let res;
       try {
@@ -549,16 +642,27 @@ export default function App() {
       return;
     }
     setProgress({ percent: 5, label: 'Iniciando generación LLM de código JSCAD…', remaining: 20 });
+    let stlSubStep = 0;
     const stepTimer = setInterval(() => {
       setProgress((curr) => {
-        if (curr.percent >= 92) return curr;
-        const next = curr.percent + Math.floor(Math.random() * 10) + 5;
-        const pct = Math.min(92, next);
-        let label = 'Generando código con LLM…';
-        if (pct > 20 && pct <= 45) label = 'Ejecutando inferencia de código JSCAD…';
+        let pct;
+        let label = curr.label;
+        if (curr.percent < 90) {
+          const next = curr.percent + Math.floor(Math.random() * 10) + 5;
+          pct = Math.min(90, next);
+        } else {
+          stlSubStep += 1;
+          pct = Math.min(98, curr.percent + (stlSubStep % 2 === 0 ? 1 : 0));
+        }
+
+        if (pct <= 20) label = 'Iniciando generación LLM de código JSCAD…';
+        else if (pct > 20 && pct <= 45) label = 'Ejecutando inferencia de código JSCAD…';
         else if (pct > 45 && pct <= 70) label = 'Compilando script geométrico en V8…';
-        else if (pct > 70) label = 'Triangulando malla CSG a STL…';
-        const remaining = Math.max(1, Math.ceil((100 - pct) * 0.2));
+        else if (pct > 70 && pct <= 88) label = 'Triangulando malla CSG a STL…';
+        else if (pct > 88 && pct <= 94) label = 'Validando manifold y normales…';
+        else if (pct > 94) label = 'Exportando archivo geométrico…';
+
+        const remaining = Math.max(1, Math.ceil((100 - pct) * 0.25));
         return { percent: pct, label, remaining };
       });
     }, 700);
@@ -669,8 +773,8 @@ export default function App() {
   // to 60mm) then save it to ~/Documents/OllamaImageStudio/.
   const handleSaveStl3d = useCallback(async () => {
     if (!result || result.type !== 'glb') return null;
-    if (['atencion', 'critico'].includes(result.qualityLevel)) {
-      setError('La calidad requiere revisión; añade vistas reales o corrige la entrada antes de exportar STL.');
+    if (result.qualityLevel === 'critico') {
+      setError('La entrega está marcada como crítica; revisa o corrige el modelo antes de exportar STL.');
       return null;
     }
     const conv = await window.hunyuan.convertStl({
@@ -678,7 +782,7 @@ export default function App() {
       targetMm: stlMm,
     });
     if (!conv.ok) {
-      setError(conv.error || 'Conversion STL échouée.');
+      setError(conv.error || 'Conversión a STL fallida.');
       return null;
     }
     const dest = await window.hunyuan.saveGlb({
@@ -690,8 +794,15 @@ export default function App() {
 
   const handleSaveOpenUsd = useCallback(async () => {
     if (!result || result.type !== 'glb') return null;
-    if (['atencion', 'critico'].includes(result.qualityLevel)) {
-      setError('La calidad requiere revisión; añade vistas reales o corrige la entrada antes de exportar OpenUSD.');
+    if (result.usdzPath) {
+      const dest = await window.hunyuan.saveGlb({
+        srcPath: result.usdzPath,
+        filename: timestampName(result.faces || 'model', 'usdz'),
+      });
+      return { path: dest, report: { ok: true, usdz_path: result.usdzPath } };
+    }
+    if (result.qualityLevel === 'critico') {
+      setError('La entrega está marcada como crítica; revisa o corrige el modelo antes de exportar OpenUSD.');
       return null;
     }
     const converted = await window.hunyuan.convertOpenUsd({ glbPath: result.glbPath });
@@ -873,12 +984,24 @@ export default function App() {
     setProgress({ percent: 1, label: 'Generando nueva textura PBR en Meshy Cloud…', remaining: null });
 
     try {
+      let multiviewImageUrls = undefined;
+      if (Object.keys(multiViewInputs).length > 0) {
+        multiviewImageUrls = [
+          ...(image3dInput ? [`data:image/png;base64,${image3dInput.base64}`] : []),
+          ...Object.values(multiViewInputs).map(img => `data:image/png;base64,${img.base64}`)
+        ].slice(0, 4);
+      }
+
       const res = await window.meshy.generate3D({
         apiKey: meshyApiKey,
         mode: 'retexture',
         prompt: texPrompt,
         preview_task_id: meshyPreviewTaskId || result?.taskId || undefined,
+        glbBase64: result?.glbBase64 || undefined,
+        multiview_image_urls: multiviewImageUrls,
         art_style: 'realistic',
+        ai_model: meshyAiModel,
+        texture_resolution: (resolution || meshyTextureResolution || '2k').toLowerCase(),
       });
 
       setGenerating(false);
@@ -959,8 +1082,12 @@ export default function App() {
         onToggleHistory={() => setHistoryOpen((open) => !open)}
         onRefresh={checkStatus}
         onOpenJobsReview={() => setShowJobsReviewModal(true)}
+        lang={lang}
+        setLang={handleSetLang}
+        soundMuted={soundMuted}
+        onToggleSound={handleToggleSound}
+        onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
       />
-
 
       <div className="workspace-grid relative z-10 flex min-h-0 flex-1 gap-3 p-3">
         {/* Left: form */}
@@ -981,6 +1108,14 @@ export default function App() {
             meshyTargetPolycount={meshyTargetPolycount}
             setMeshyTargetPolycount={setMeshyTargetPolycount}
             meshyPreviewTaskId={meshyPreviewTaskId}
+            meshyAiModel={meshyAiModel}
+            setMeshyAiModel={setMeshyAiModel}
+            meshyUltraMode={meshyUltraMode}
+            setMeshyUltraMode={setMeshyUltraMode}
+            meshyTextureResolution={meshyTextureResolution}
+            setMeshyTextureResolution={setMeshyTextureResolution}
+            meshyShouldTexture={meshyShouldTexture}
+            setMeshyShouldTexture={setMeshyShouldTexture}
             useCase={useCase}
             onSelectUseCase={handleSelectUseCase}
             modelCategory={modelCategory}
@@ -1031,7 +1166,6 @@ export default function App() {
           />
         </aside>
 
-
         {/* Center: result */}
         <main className="result-stage workspace-window min-w-0 flex-1 overflow-hidden rounded-[22px]">
           <ImageViewer
@@ -1052,6 +1186,9 @@ export default function App() {
             onUseAs3dReference={handleUseImageAsReference}
             onApplyOnlineTexture={handleOnlineTexture}
             onApplyOnlineCorrection={handleOnlineCorrection}
+            onErrorDismiss={() => setError(null)}
+            externalAction={externalAction}
+            onClearExternalAction={() => setExternalAction(null)}
           />
         </main>
 
@@ -1074,6 +1211,23 @@ export default function App() {
       <JobsIveDesignReviewModal
         isOpen={showJobsReviewModal}
         onClose={() => setShowJobsReviewModal(false)}
+      />
+
+      {/* Spotlight-Style Command Palette */}
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        mode={mode}
+        setMode={setMode}
+        engineProvider={engineProvider}
+        setEngineProvider={setEngineProvider}
+        onTriggerAction={(type, payload) => {
+          setExternalAction({ type, payload });
+        }}
+        lang={lang}
+        setLang={handleSetLang}
+        soundMuted={soundMuted}
+        onToggleSound={handleToggleSound}
       />
     </div>
   );

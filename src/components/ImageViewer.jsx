@@ -7,6 +7,7 @@ import {
   FloppyDisk,
   Image as ImageIcon,
   Info,
+  Lightning,
   PaintBrush,
   Polygon,
   ShieldCheck,
@@ -61,12 +62,12 @@ function Meta({ label, value, strong = false }) {
   );
 }
 
-function StageRail({ percent }) {
+function StageRail({ percent, textureEnabled }) {
   const stages = [
     ['Referencia', 8],
     ['Forma MLX', 82],
     ['Geometría', 86],
-    ['PBR 6V', 90],
+    [textureEnabled ? 'PBR 6V' : 'Sin Paint', 90],
     ['Gate final', 100],
   ];
   return (
@@ -104,6 +105,9 @@ export default function ImageViewer({
   asset,
   onApplyOnlineTexture,
   onApplyOnlineCorrection,
+  onErrorDismiss,
+  externalAction,
+  onClearExternalAction,
 }) {
   const isStl = result?.type === 'stl';
   const isGlb = result?.type === 'glb';
@@ -113,14 +117,14 @@ export default function ImageViewer({
     ? { level: result.qualityLevel, text: result.qualityText || 'Resultado validado.' }
     : profileAudit(auditProfile, result?.faces || result?.triangles);
   const defaultSaveLabel = isGlb ? 'Guardar GLB' : isStl ? 'Guardar STL' : 'Guardar imagen';
-  const exportBlocked = ['atencion', 'critico'].includes(result?.qualityLevel);
+  const deliveryBlocked = isGlb && audit.level === 'critico';
   const paintGate = result?.textureReport?.visual_fidelity?.gate;
   const paintCorrelation = paintGate?.front?.metrics?.spatialColorCorrelation;
 
   const [saveLabel, setSaveLabel] = useState(defaultSaveLabel);
   const [copyLabel, setCopyLabel] = useState('Copiar prompt');
   const [stlLabel, setStlLabel] = useState('Exportar STL');
-  const [usdLabel, setUsdLabel] = useState('Exportar USDZ');
+  const [usdLabel, setUsdLabel] = useState('Exportar OpenUSD');
   const [showCode, setShowCode] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
 
@@ -133,30 +137,29 @@ export default function ImageViewer({
     setSaveLabel(result?.filePath ? '✓ Guardado' : defaultSaveLabel);
     setCopyLabel('Copiar prompt');
     setStlLabel('Exportar STL');
-    setUsdLabel('Exportar USDZ');
+    setUsdLabel('Exportar OpenUSD');
     setShowCode(false);
     setShowDetails(false);
   }, [result?.id, result?.filePath, defaultSaveLabel]);
 
   const handleSaveStl = async () => {
-    if (exportBlocked) return setStlLabel('Bloqueado');
+    if (deliveryBlocked) return setStlLabel('Bloqueado');
     setStlLabel('Convirtiendo…');
     const saved = await onSaveStl();
     setStlLabel(saved ? `✓ STL ${saved.dims ? `${saved.dims.join('×')}mm` : 'guardado'}` : 'Exportar STL');
   };
 
   const handleSave = async () => {
-    if (exportBlocked) return setSaveLabel('Bloqueado');
     setSaveLabel('Guardando…');
     const path = await onSave();
     setSaveLabel(path ? '✓ Guardado' : defaultSaveLabel);
   };
 
   const handleSaveOpenUsd = async () => {
-    if (exportBlocked) return setUsdLabel('Bloqueado');
+    if (deliveryBlocked) return setUsdLabel('Bloqueado');
     setUsdLabel('Convirtiendo…');
     const saved = await onSaveOpenUsd();
-    setUsdLabel(saved ? '✓ USDZ validado' : 'Exportar USDZ');
+    setUsdLabel(saved ? '✓ OpenUSD validado' : 'Exportar OpenUSD');
   };
 
   const handleCopy = async () => {
@@ -180,7 +183,7 @@ export default function ImageViewer({
         <div className="processing-halo absolute h-[520px] w-[520px] rounded-full self-center" />
         
         {/* Clean 5-Step Horizontal Flow Header */}
-        <HorizontalFlowStudio percent={progress.percent} mode={mode} isMeshy={recipe?.engineProvider === 'meshy'} label={progress.label} />
+        <HorizontalFlowStudio percent={progress.percent} mode={mode} isMeshy={recipe?.engineProvider === 'meshy'} label={progress.label} textureEnabled={asset?.texture === true} />
 
         {/* Center Progress Card */}
         <div className="loading-card relative w-full rounded-[24px] p-6 shadow-2xl backdrop-blur-3xl border border-white/10">
@@ -202,7 +205,7 @@ export default function ImageViewer({
             <div className="progress-fill progress-beam h-full rounded-full transition-all duration-500 bg-gradient-to-r from-blue-500 via-sky-400 to-cyan-300" style={{ width: `${progress.percent}%` }} />
           </div>
           
-          <StageRail percent={progress.percent} />
+          <StageRail percent={progress.percent} textureEnabled={asset?.texture === true} />
 
           {generating && (
             <button type="button" onClick={onCancel} className="mt-4 w-full rounded-full border border-amber-200/30 bg-amber-200/10 px-4 py-2.5 text-xs font-semibold text-amber-100 transition hover:bg-amber-200/20">
@@ -225,6 +228,15 @@ export default function ImageViewer({
           <p className="mt-4 font-mono text-[8px] uppercase tracking-[0.18em] text-rose-200/65">Control de calidad</p>
           <h2 className="mt-1.5 text-base font-semibold text-white">El gate detuvo la entrega</h2>
           <p className="mt-2 text-sm leading-relaxed text-rose-50/75">{error}</p>
+          {onErrorDismiss && (
+            <button
+              type="button"
+              onClick={onErrorDismiss}
+              className="mt-4 rounded-full bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-500/40 px-5 py-2 text-xs font-semibold transition"
+            >
+              Volver al modelo 3D
+            </button>
+          )}
           <p className="mt-4 border-t border-rose-100/10 pt-3 text-[10px] text-rose-100/45">Nada defectuoso sale del taller.</p>
         </div>
       </div>
@@ -322,7 +334,13 @@ export default function ImageViewer({
         <ErrorBoundary>
           <Suspense fallback={<ViewerFallback />}>
             {activeTab === 'multiview' ? (
-              <MultiViewGrid views={result.multiViewImages} mainImage={result.inputDataUrl} />
+              <MultiViewGrid
+                views={result.multiViewImages}
+                mainImage={result.inputDataUrl}
+                glbBase64={result.glbBase64}
+                glbPath={result.glbPath}
+                result={result}
+              />
             ) : activeTab === 'preprocessed' ? (
               <div className="flex h-full w-full items-center justify-center p-6">
                 <img src={result.inputDataUrl} alt="Sujeto Aislado" className="max-h-full max-w-full rounded-3xl object-contain shadow-2xl border border-white/10" />
@@ -334,7 +352,12 @@ export default function ImageViewer({
                 <LiveTelemetryDrawer progress={{ percent: 100, label: 'Pipeline completado · Gates validados' }} />
               </div>
             ) : isGlb ? (
-              <GltfViewer glbBase64={result.glbBase64} glbPath={result.glbPath} />
+              <GltfViewer
+                glbBase64={result.glbBase64}
+                glbPath={result.glbPath}
+                externalAction={externalAction}
+                onClearExternalAction={onClearExternalAction}
+              />
             ) : isStl ? (
               <StlViewer stl={result.stl} />
             ) : (
@@ -377,7 +400,7 @@ export default function ImageViewer({
                 <span className="text-white/20">|</span>
                 <span className="flex items-center gap-1 font-bold"><Lightning size={12} className="text-amber-400" /> {result.duration ? `${Number(result.duration).toFixed(1)}s` : '12.4s'}</span>
                 <span className="text-white/20">|</span>
-                <span className="text-emerald-300 font-extrabold">✓ VisionOS Ready</span>
+                <span className={result.usdzPath ? 'text-emerald-300 font-extrabold' : deliveryBlocked ? 'text-amber-300 font-extrabold' : 'text-cyan-300 font-extrabold'}>{result.usdzPath ? '✓ OpenUSD validado' : deliveryBlocked ? 'OpenUSD requiere revisión' : 'OpenUSD disponible'}</span>
               </div>
             )}
           </>
@@ -387,11 +410,11 @@ export default function ImageViewer({
       <div className="asset-dock glass-card shrink-0 rounded-3xl p-4 border border-sky-500/20 bg-[#06173a]/75 backdrop-blur-2xl">
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
-            <p className="font-mono text-[8px] uppercase tracking-[0.18em] font-extrabold text-sky-300">{exportBlocked ? 'Activo bloqueado para entrega' : 'Activo listo para revisar'}</p>
+            <p className="font-mono text-[8px] uppercase tracking-[0.18em] font-extrabold text-sky-300">{deliveryBlocked ? 'Inspección disponible · entrega bloqueada' : 'Activo listo para entregar'}</p>
             <p className="mt-1 truncate text-xs font-semibold text-slate-200">{isGlb ? `Referencia · ${result.prompt}` : result.prompt}</p>
           </div>
           <div className="flex shrink-0 flex-wrap justify-end gap-2">
-            <button onClick={handleSave} disabled={exportBlocked} className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-blue-600 via-blue-500 to-sky-500 px-4 py-2 text-[11px] font-extrabold text-white shadow-lg shadow-blue-950/40 transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-40"><FloppyDisk size={14} weight="duotone" aria-hidden="true" />{exportBlocked ? 'Bloqueado' : saveLabel}</button>
+            <button onClick={handleSave} className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-blue-600 via-blue-500 to-sky-500 px-4 py-2 text-[11px] font-extrabold text-white shadow-lg shadow-blue-950/40 transition hover:scale-[1.03]"><FloppyDisk size={14} weight="duotone" aria-hidden="true" />{saveLabel}</button>
             {!isGlb && !isStl && <button onClick={onUseAs3dReference} className="flex items-center gap-1.5 rounded-full border border-sky-400/30 bg-sky-500/15 px-4 py-2 text-[11px] font-bold text-sky-100 transition hover:bg-sky-500/25 hover:scale-[1.03]">Usar en 3D <ArrowRight size={14} weight="bold" aria-hidden="true" /></button>}
             
             {/* New Online Retexture button */}
@@ -428,8 +451,8 @@ export default function ImageViewer({
               📋 Informe Completo
             </button>
 
-            {isGlb && <button onClick={handleSaveStl} disabled={exportBlocked} title="Exportar como STL para impresión 3D" className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3.5 py-2 text-[11px] font-bold text-slate-200 transition hover:border-sky-400/30 hover:bg-white/20 disabled:opacity-40"><Cube size={14} weight="duotone" aria-hidden="true" />{stlLabel}</button>}
-            {isGlb && <button onClick={handleSaveOpenUsd} disabled={exportBlocked} title="Exportar OpenUSD validado para Apple Quick Look y RealityKit" className="flex items-center gap-1.5 rounded-full border border-sky-400/30 bg-sky-500/10 px-3.5 py-2 text-[11px] font-bold text-cyan-100 transition hover:border-sky-400/50 hover:bg-sky-500/20 disabled:opacity-40"><CubeFocus size={14} weight="duotone" aria-hidden="true" />{usdLabel}</button>}
+            {isGlb && <button onClick={handleSaveStl} disabled={deliveryBlocked} title={deliveryBlocked ? 'Revisa los gates antes de exportar' : 'Exportar como STL para impresión 3D'} className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3.5 py-2 text-[11px] font-bold text-slate-200 transition hover:border-sky-400/30 hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"><Cube size={14} weight="duotone" aria-hidden="true" />{deliveryBlocked ? 'STL bloqueado' : stlLabel}</button>}
+            {isGlb && <button onClick={handleSaveOpenUsd} disabled={deliveryBlocked} title={deliveryBlocked ? 'Revisa los gates antes de exportar' : 'Exportar OpenUSD validado para Apple Quick Look y RealityKit'} className="flex items-center gap-1.5 rounded-full border border-sky-400/30 bg-sky-500/10 px-3.5 py-2 text-[11px] font-bold text-cyan-100 transition hover:border-sky-400/50 hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-40"><CubeFocus size={14} weight="duotone" aria-hidden="true" />{deliveryBlocked ? 'OpenUSD bloqueado' : usdLabel}</button>}
             {!isGlb && <button onClick={handleCopy} className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3.5 py-2 text-[11px] font-bold text-slate-300 hover:border-sky-400/30 hover:text-white"><Copy size={14} weight="duotone" aria-hidden="true" />{copyLabel}</button>}
             <button onClick={() => setShowDetails((open) => !open)} aria-expanded={showDetails} className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3.5 py-2 text-[11px] font-bold text-slate-400 hover:text-white"><Info size={14} weight="duotone" aria-hidden="true" />{showDetails ? 'Menos' : 'Detalles'}</button>
           </div>
@@ -443,7 +466,7 @@ export default function ImageViewer({
           <div className="hidden sm:block"><Meta label="Material" value={result.textured ? result.textureSize || 'PBR' : 'Sin textura'} /></div>
         </div>
 
-        {exportBlocked && <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-300/[0.07] px-3 py-2 text-[10px] leading-relaxed text-amber-100">La entrega está bloqueada: faltan gates visuales o evidencia multi-vista suficiente. Puedes inspeccionar el resultado, pero no guardarlo ni exportarlo.</p>}
+        {deliveryBlocked && <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-300/[0.07] px-3 py-2 text-[10px] leading-relaxed text-amber-100">La entrega derivada está bloqueada: faltan gates visuales o evidencia multi-vista suficiente. Puedes guardar el GLB como artefacto de revisión, pero STL y OpenUSD requieren corregir o validar primero.</p>}
 
         {showDetails && (
           <div className="mt-3 grid grid-cols-2 gap-3 rounded-xl border border-white/5 bg-black/15 p-3 sm:grid-cols-4">
