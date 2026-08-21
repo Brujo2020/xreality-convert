@@ -1669,7 +1669,7 @@ ipcMain.handle('hunyuan:generate3D', async (event, params) => {
         error: `El motor 3D se detuvo durante la conversión. Log: ${HUNYUAN_LOG_FILE}${
           hunyuanLastExit ? ` (${JSON.stringify(hunyuanLastExit)})` : ''
         }`,
-      };
+      });
     }
     return missionFailure({ ok: false, error: err.message });
   }
