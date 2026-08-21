@@ -1,12 +1,40 @@
-node_modules/
-.worktrees/
-dist/
-release/
+# Compiled and build artifacts
+*.pyc
+__pycache__/
+*.o
+*.obj
 .DS_Store
+
+# Dependencies
+.venv/
+venv/
+node_modules/
+
+# Logs and temp files
 *.log
-engine/venv/
-engine/Hunyuan3D-2.1-mlx/
+*.tmp
+*.swp
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+
+# Coverage
+.coverage
+coverage/
+htmlcov/
+
+# Build directories
+dist/
+build/
+target/
+release/
+ui-smoke-output/
+engine/.upstream-git/
+engine/models/
 engine/jobs/
-engine/__pycache__/
-engine/.installed
-.superpowers/

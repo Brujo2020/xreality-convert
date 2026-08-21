@@ -1,0 +1,21 @@
+{
+  "faces": 123926,
+  "glb": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/dgrauet-demo-shape12-2026-08-03/dgrauet-hunyuan-shape.glb",
+  "glb_bytes": 2231556,
+  "glb_sha256": "a2ab97755dcbbe8b98f667d995854ace5ab233bd1f53ef3b4b5e1e8e3373ce5c",
+  "inference_seconds": 121.946,
+  "load_seconds": 0.33,
+  "mlx_active_gb": 0.429,
+  "mlx_peak_gb": 9.155,
+  "model": "dgrauet/hunyuan3d-2.1-mlx",
+  "octree_resolution": 128,
+  "process_max_rss_gb": 2.241,
+  "seed": 42,
+  "source": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/engine/Hunyuan3D-2.1-mlx/assets/demo.png",
+  "status": "pass",
+  "steps": 12,
+  "swap_delta_bytes": 3519346115,
+  "vertices": 61969,
+  "watertight": true,
+  "weights": "/Users/mramospe/.cache/huggingface/hub/models--dgrauet--hunyuan3d-2.1-mlx/snapshots/aab209dc3a3c4da396bc934fd153b220f6d8d9d6"
+}

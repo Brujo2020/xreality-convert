@@ -1,0 +1,21 @@
+{
+  "status": "pass",
+  "pipeline_type": "512",
+  "seed": 42,
+  "steps_per_stage": 4,
+  "source": "/private/tmp/trellis2-apple.YXWyvL/assets/example_image/T.png",
+  "source_mode": "RGBA",
+  "processed_size": [
+    922,
+    922
+  ],
+  "vertices": 1573657,
+  "faces": 3435650,
+  "generation_seconds": 60.355,
+  "postprocess_seconds": 30.046,
+  "mlx_active_gb": 11.015,
+  "mlx_peak_gb": 13.992,
+  "process_max_rss_gb": 5.423,
+  "glb": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/trellis2-pedro-512-smoke-2026-08-02/trellis2-pedro-512-smoke.glb",
+  "glb_bytes": 9711088
+}

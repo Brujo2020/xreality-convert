@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
+import ErrorBoundary from './components/ErrorBoundary.jsx';
 import './index.css';
 import coreSkillCatalog from '../skills/xreality-core.json';
 
@@ -55,6 +56,11 @@ function browserMission(input, running = false) {
   };
 }
 
+// Global error handlers to prevent unhandled promise rejections or script errors from freezing the UI
+window.addEventListener('unhandledrejection', (event) => {
+  console.warn('Caught unhandled promise rejection:', event.reason);
+});
+
 // Browser-only preview bridge. Electron replaces these APIs through preload;
 // this fallback keeps the interface testable in Vite without touching services.
 if (import.meta.env.DEV && !window.ollama) {
@@ -79,12 +85,18 @@ if (import.meta.env.DEV && !window.ollama) {
     onProgress: () => () => {},
     cancel3D: async () => ({ ok: true }),
     pickImage: async () => null,
+    admitMultiView: async () => ({ ok: true, admission: { passed: true } }),
+    multiViewStatus: async () => ({ available: true }),
     convertStl: async () => ({ ok: false }),
-    textureGlb: async () => ({ ok: false, error: 'Paint requiere abrir la app Electron.' }),
-    cacheReference: async () => null,
-    readReference: async () => null,
+    convertOpenUsd: async () => ({ ok: false }),
     readGlb: async () => null,
     saveGlb: async () => null,
+  };
+  window.meshy = {
+    getApiKey: async () => '',
+    saveApiKey: async () => true,
+    generate3D: async () => ({ ok: false, error: 'La generación Meshy requiere abrir la app Electron con una API Key válida.' }),
+    cancel: async () => ({ ok: true }),
   };
 }
 
@@ -106,6 +118,9 @@ if (import.meta.env.DEV && !window.superagents) {
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>
 );
+

@@ -4,23 +4,21 @@ const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const os = require('node:os');
 const http = require('node:http');
+const { createHash, randomBytes } = require('node:crypto');
 const vm = require('node:vm');
-const { spawn } = require('node:child_process');
+const { execFileSync, spawn } = require('node:child_process');
 const jscadModeling = require('@jscad/modeling');
 const stlSerializer = require('@jscad/stl-serializer');
-const { copyIfChecksumDiffers, syncTreeByChecksum } = require('./file-sync');
-const { isTransientLocalPollError, nextRestartDelayMs } = require('./process-backoff');
-const { extractGeneratedText } = require('./ollama-response');
-const { loadedGenerativeModelIds, parseModelKey, rankOmlxModels } = require('./model-routing');
-const { recovered3DFromReport } = require('./hunyuan-recovery');
-const { resolveWithinRoots, safeOutputFilename } = require('./path-policy');
 const {
-  LocalMissionOrchestrator,
-  loadSkillCatalog,
-  skillForPipelineState,
-} = require('./local-orchestrator');
+  inspectHunyuanRuntime,
+  engineProcessEnv,
+  appleSiliconExecutionPlan,
+  engineRestartDelay,
+} = require('./hunyuan-runtime.cjs');
+const { MeshyRuntime } = require('./meshy-runtime.cjs');
 
 const APP_NAME = 'Xreality Convert';
+
 const APP_ID = 'com.xreality.convert';
 
 const OLLAMA_HOST = 'localhost';
@@ -33,10 +31,8 @@ const isDev = process.env.NODE_ENV === 'development';
 
 app.setName(APP_NAME);
 app.setAppUserModelId(APP_ID);
-const gotSingleInstanceLock = app.requestSingleInstanceLock();
-if (!gotSingleInstanceLock) {
-  app.quit();
-}
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) app.exit(0);
 
 // --- Persistence paths -----------------------------------------------------
 const APP_SUPPORT_DIR = path.join(
@@ -49,65 +45,25 @@ const STL_CACHE_DIR = path.join(APP_SUPPORT_DIR, 'stl-cache');
 const REFERENCE_CACHE_DIR = path.join(APP_SUPPORT_DIR, 'reference-cache');
 const PICTURES_DIR = path.join(app.getPath('pictures'), 'XrealityConvert');
 const STL_SAVE_DIR = path.join(app.getPath('documents'), 'XrealityConvert');
-const OMLX_SETTINGS_FILE = path.join(os.homedir(), '.omlx', 'settings.json');
-const LOCAL_SKILL_CATALOG = loadSkillCatalog(
-  path.join(__dirname, '..', 'skills', 'xreality-core.json')
-);
-const localMissions = new LocalMissionOrchestrator({ catalog: LOCAL_SKILL_CATALOG });
+const ENGINE_TOKEN_FILE = path.join(APP_SUPPORT_DIR, '.engine-token');
+const localHttpAgent = new http.Agent({ keepAlive: true, maxSockets: 4 });
+let engineToken = null;
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
 }
 
-function publishMission(mission, eventType) {
-  if (!mission) return null;
-  const active = mission.tasks.find((task) => task.id === mission.activeTaskId);
-  const event = {
-    missionId: mission.id,
-    event: eventType,
-    status: mission.status,
-    mode: mission.input.mode,
-    activeSkill: active?.skillId || null,
-    at: mission.updatedAt,
-  };
+function getEngineToken() {
+  if (engineToken) return engineToken;
   ensureDir(APP_SUPPORT_DIR);
-  fsp.appendFile(MISSION_JOURNAL_FILE, `${JSON.stringify(event)}\n`, 'utf8').catch(() => {});
-  for (const win of BrowserWindow.getAllWindows()) {
-    if (!win.isDestroyed()) win.webContents.send('superagents:mission', mission);
+  try {
+    engineToken = fs.readFileSync(ENGINE_TOKEN_FILE, 'utf8').trim();
+  } catch {}
+  if (!engineToken) {
+    engineToken = randomBytes(32).toString('hex');
+    fs.writeFileSync(ENGINE_TOKEN_FILE, engineToken, { mode: 0o600 });
   }
-  return mission;
-}
-
-function transitionMission(missionId, transition) {
-  if (!missionId) return null;
-  const before = localMissions.get(missionId);
-  const mission = localMissions.transition(missionId, transition);
-  if (!mission || (before && before.updatedAt === mission.updatedAt)) return mission;
-  return publishMission(mission, transition.type === 'stage' ? transition.skillId : transition.type);
-}
-
-function freeBytesForPath(targetPath) {
-  let current = targetPath;
-  while (!fs.existsSync(current)) {
-    const parent = path.dirname(current);
-    if (parent === current) break;
-    current = parent;
-  }
-  const stats = fs.statfsSync(current);
-  return stats.bavail * stats.bsize;
-}
-
-function assertFreeSpace(targetPath, requiredBytes, label) {
-  const available = freeBytesForPath(targetPath);
-  if (available < requiredBytes) {
-    const availableGb = (available / GB).toFixed(1);
-    const requiredGb = (requiredBytes / GB).toFixed(1);
-    return {
-      ok: false,
-      error: `${label}: espacio insuficiente (${availableGb} GB libres, ${requiredGb} GB requeridos).`,
-    };
-  }
-  return { ok: true };
+  return engineToken;
 }
 
 // --- Lightweight HTTP helper (Node core, no deps) --------------------------
@@ -122,6 +78,7 @@ function ollamaRequest({ method, pathName, body, timeout, signal }) {
         port: OLLAMA_PORT,
         path: pathName,
         method,
+        agent: localHttpAgent,
         headers: {
           'Content-Type': 'application/json',
           ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}),
@@ -477,6 +434,41 @@ ipcMain.handle('ollama:cancel', async () => {
     return { ok: true };
   }
   return { ok: false };
+});
+
+async function unloadAllOllamaModels() {
+  try {
+    const res = await ollamaRequest({
+      method: 'GET',
+      pathName: '/api/ps',
+      timeout: 3000,
+    });
+    if (res.statusCode === 200) {
+      const data = JSON.parse(res.body);
+      const running = Array.isArray(data.models) ? data.models : [];
+      for (const m of running) {
+        const modelName = m.name || m.model;
+        if (modelName) {
+          appendHunyuanLog(`[Ollama] Liberando VRAM/RAM del modelo: ${modelName}`);
+          try {
+            await ollamaRequest({
+              method: 'POST',
+              pathName: '/api/generate',
+              timeout: 5000,
+              body: { model: modelName, keep_alive: 0 },
+            });
+          } catch {}
+        }
+      }
+    }
+  } catch (err) {
+    // Ollama not reachable or no models loaded
+  }
+}
+
+ipcMain.handle('ollama:unloadModels', async () => {
+  await unloadAllOllamaModels();
+  return { ok: true };
 });
 
 // --- STL generation --------------------------------------------------------
@@ -903,8 +895,8 @@ ipcMain.handle('ollama:saveHistory', async (_event, history) => {
 
 // --- Hunyuan3D (image -> 3D mesh) via local FastAPI server -----------------
 const HUNYUAN_PORT = 8765;
-const HUNYUAN_INSTALL_VERSION = '4';
-const HUNYUAN_MAX_RESTARTS = 3;
+const HUNYUAN_INSTALL_VERSION = '21';
+const HUNYUAN_SOURCE_REVISION = 'xreality-buffalo-mlx-openusd-watertight-v3-memfix';
 
 function hunyuanRequest({ method, pathName, body, timeout }) {
   return new Promise((resolve, reject) => {
@@ -915,8 +907,10 @@ function hunyuanRequest({ method, pathName, body, timeout }) {
         port: HUNYUAN_PORT,
         path: pathName,
         method,
+        agent: localHttpAgent,
         headers: {
           'Content-Type': 'application/json',
+          'X-Xreality-Engine-Token': getEngineToken(),
           ...(payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}),
         },
       },
@@ -970,50 +964,170 @@ ipcMain.handle('tools:list', async (_event, payload = {}) => (
   localToolRegistry.list({ force: payload?.force === true })
 ));
 let hunyuanServerProc = null;
+let hunyuanServerStartPromise = null;
 let hunyuanInstallProc = null;
 let hunyuanActiveJobId = null;
+let hunyuanLastExit = null;
+let hunyuanRestartTimer = null;
 let hunyuanRestartAttempts = 0;
-let hunyuanStopping = false;
-let hunyuanLastError = null;
+let hunyuanShutdownRequested = false;
+const HUNYUAN_RESTART_LIMIT = 4;
+const HUNYUAN_LOG_FILE = path.join(APP_SUPPORT_DIR, 'engine-runtime.log');
+// Keep Electron/Finder launches on the same Hugging Face object store used by
+// terminal runs. An explicit HF_HUB_CACHE still wins (for example, an external
+// SSD), but the app never invents a second cache under Application Support.
+const HUGGINGFACE_HUB_CACHE = process.env.HF_HUB_CACHE || path.join(
+  process.env.HF_HOME || path.join(os.homedir(), '.cache', 'huggingface'),
+  'hub'
+);
 
-ipcMain.handle('hunyuan:recoverCompleted3D', async () => {
-  const reportsDir = path.join(HUNYUAN_SERVER_DIR, 'jobs', 'reports');
-  let filenames;
+function clearHunyuanRestartTimer() {
+  if (hunyuanRestartTimer) clearTimeout(hunyuanRestartTimer);
+  hunyuanRestartTimer = null;
+}
+
+function scheduleHunyuanRestart() {
+  if (hunyuanShutdownRequested || hunyuanRestartTimer) return;
+  if (hunyuanRestartAttempts >= HUNYUAN_RESTART_LIMIT) {
+    appendHunyuanLog(`reinicio automático agotado tras ${HUNYUAN_RESTART_LIMIT} intentos`);
+    return;
+  }
+  hunyuanRestartAttempts += 1;
+  const delayMs = engineRestartDelay(hunyuanRestartAttempts);
+  appendHunyuanLog(`reinicio automático ${hunyuanRestartAttempts}/${HUNYUAN_RESTART_LIMIT} en ${delayMs}ms`);
+  hunyuanRestartTimer = setTimeout(() => {
+    hunyuanRestartTimer = null;
+    startHunyuanServer().catch((error) => {
+      appendHunyuanLog(`reinicio automático falló: ${error.message}`);
+      scheduleHunyuanRestart();
+    });
+  }, delayMs);
+  hunyuanRestartTimer.unref?.();
+}
+
+function hunyuanRuntimeStatus() {
+  return inspectHunyuanRuntime(
+    HUNYUAN_SERVER_DIR,
+    HUNYUAN_INSTALL_VERSION,
+    HUNYUAN_SOURCE_REVISION
+  );
+}
+
+function appendHunyuanLog(message) {
+  ensureDir(APP_SUPPORT_DIR);
+  fs.appendFileSync(HUNYUAN_LOG_FILE, `${new Date().toISOString()} ${message}\n`, {
+    encoding: 'utf8',
+    mode: 0o600,
+  });
+}
+
+async function prepareHunyuanEngineFiles() {
+  if (HUNYUAN_SERVER_DIR === BUNDLED_ENGINE_DIR) return { cached: true };
+  const bundleMarker = path.join(HUNYUAN_SERVER_DIR, '.bundle-version');
+  const sourceMarker = path.join(HUNYUAN_SERVER_DIR, '.source-version');
+  const requiredRuntimeFiles = [
+    'server.py',
+    'setup.sh',
+    'paint_service.py',
+    'agentic_paint_service.py',
+    'pbr_glb.py',
+    'material_policy.py',
+    'asset_director.py',
+    'buffalo_strategy.py',
+    'openusd_export.py',
+    'reference_projection.py',
+    'm5_optimizer.py',
+    'requirements-macos.lock',
+  ];
+  // Keep the installed runtime congruent with the bundled control plane. The
+  // server imports several small, fail-closed gates; copying only the original
+  // inference files would let a packaged build pass installation then fail at
+  // import time. Tests and bytecode are deliberately excluded.
+  let bundledRuntimeFiles = [];
   try {
-    filenames = await fsp.readdir(reportsDir);
-  } catch {
-    return [];
+    bundledRuntimeFiles = (await fsp.readdir(BUNDLED_ENGINE_DIR)).filter(
+      (filename) => filename.endsWith('.py') && !filename.startsWith('test_')
+    );
+  } catch {}
+  const filenames = [...new Set([...requiredRuntimeFiles, ...bundledRuntimeFiles])];
+  let copiedVersion = '';
+  let copiedSourceRevision = '';
+  try { copiedVersion = (await fsp.readFile(bundleMarker, 'utf8')).trim(); } catch {}
+  try { copiedSourceRevision = (await fsp.readFile(sourceMarker, 'utf8')).trim(); } catch {}
+  const bundleComplete = filenames.every((filename) =>
+    fs.existsSync(path.join(HUNYUAN_SERVER_DIR, filename))
+  ) && fs.existsSync(
+    path.join(HUNYUAN_SERVER_DIR, 'Hunyuan3D-2.1-mlx', 'hy3dshape', 'hy3dshape', 'pipeline_mlx.py')
+  ) && fs.existsSync(
+    path.join(HUNYUAN_SERVER_DIR, 'AgenticVibes-Hunyuan3D-Paint', 'hy3dpaint', 'mlx', 'hybrid_unet.py')
+  ) && fs.existsSync(
+    path.join(HUNYUAN_SERVER_DIR, 'agentic_paint_runner.py')
+  ) && fs.existsSync(
+    path.join(HUNYUAN_SERVER_DIR, 'Hunyuan3D-2-official', 'hy3dgen', 'shapegen', 'pipelines.py')
+  );
+  if (
+    copiedVersion === HUNYUAN_INSTALL_VERSION &&
+    copiedSourceRevision === HUNYUAN_SOURCE_REVISION &&
+    bundleComplete
+  ) {
+    return { cached: true };
   }
-  const recovered = [];
-  for (const filename of filenames) {
-    if (!/^[a-f0-9]{32}\.json$/.test(filename)) continue;
-    try {
-      const report = JSON.parse(await fsp.readFile(path.join(reportsDir, filename), 'utf8'));
-      const item = recovered3DFromReport(report, HUNYUAN_SERVER_DIR, fs.existsSync);
-      if (item) recovered.push(item);
-    } catch {}
-  }
-  return recovered
-    .sort((a, b) => b.createdAt - a.createdAt)
-    .slice(0, 10);
-});
 
-function prepareHunyuanEngineFiles() {
-  if (HUNYUAN_SERVER_DIR === BUNDLED_ENGINE_DIR) return;
   ensureDir(HUNYUAN_SERVER_DIR);
-  for (const filename of ['server.py', 'setup.sh', 'job_queue.py', 'job_logging.py', 'generation_policy.py', 'material_policy.py', 'texture_quality.py', 'geometry_delivery.py', 'storage.py', 'pipeline_states.py', 'pipeline_states.json', 'paint_service.py', 'pbr_glb.py']) {
+  await Promise.all(filenames.map(async (filename) => {
     const source = path.join(BUNDLED_ENGINE_DIR, filename);
     if (fs.existsSync(source)) {
-      copyIfChecksumDiffers(source, path.join(HUNYUAN_SERVER_DIR, filename));
+      await fsp.copyFile(source, path.join(HUNYUAN_SERVER_DIR, filename));
     }
-  }
-  const sourceCheckout = path.join(HUNYUAN_SERVER_DIR, 'Hunyuan3D-2.1-mlx');
-  if (fs.existsSync(path.join(sourceCheckout, '.git'))) {
-    syncTreeByChecksum(
-      path.join(BUNDLED_ENGINE_DIR, 'Hunyuan3D-2.1-mlx', 'hy3dpaint'),
-      path.join(sourceCheckout, 'hy3dpaint')
+  }));
+  const bundledAgenticRunner = path.join(
+    path.dirname(BUNDLED_ENGINE_DIR),
+    'benchmarks',
+    'model-arena',
+    'run_agenticvibes_paint.py'
+  );
+  if (fs.existsSync(bundledAgenticRunner)) {
+    await fsp.copyFile(
+      bundledAgenticRunner,
+      path.join(HUNYUAN_SERVER_DIR, 'agentic_paint_runner.py')
     );
   }
+  const bundledPaint = path.join(BUNDLED_ENGINE_DIR, 'Hunyuan3D-2.1-mlx', 'hy3dpaint');
+  const installedPaint = path.join(HUNYUAN_SERVER_DIR, 'Hunyuan3D-2.1-mlx', 'hy3dpaint');
+  if (fs.existsSync(bundledPaint)) {
+    ensureDir(path.dirname(installedPaint));
+    await fsp.cp(bundledPaint, installedPaint, { recursive: true, force: true });
+  }
+  const bundledShape = path.join(
+    BUNDLED_ENGINE_DIR,
+    'Hunyuan3D-2.1-mlx',
+    'hy3dshape',
+    'hy3dshape'
+  );
+  const installedShape = path.join(
+    HUNYUAN_SERVER_DIR,
+    'Hunyuan3D-2.1-mlx',
+    'hy3dshape',
+    'hy3dshape'
+  );
+  if (fs.existsSync(bundledShape)) {
+    ensureDir(path.dirname(installedShape));
+    await fsp.cp(bundledShape, installedShape, { recursive: true, force: true });
+  }
+  const bundledMultiView = path.join(BUNDLED_ENGINE_DIR, 'Hunyuan3D-2-official', 'hy3dgen');
+  const installedMultiView = path.join(HUNYUAN_SERVER_DIR, 'Hunyuan3D-2-official', 'hy3dgen');
+  if (fs.existsSync(bundledMultiView)) {
+    ensureDir(path.dirname(installedMultiView));
+    await fsp.cp(bundledMultiView, installedMultiView, { recursive: true, force: true });
+  }
+  const bundledAgentic = path.join(BUNDLED_ENGINE_DIR, 'AgenticVibes-Hunyuan3D-Paint');
+  const installedAgentic = path.join(HUNYUAN_SERVER_DIR, 'AgenticVibes-Hunyuan3D-Paint');
+  if (fs.existsSync(bundledAgentic)) {
+    await fsp.cp(bundledAgentic, installedAgentic, { recursive: true, force: true });
+  }
+  await fsp.writeFile(bundleMarker, HUNYUAN_INSTALL_VERSION, 'utf8');
+  await fsp.writeFile(sourceMarker, HUNYUAN_SOURCE_REVISION, 'utf8');
+  return { cached: false };
 }
 
 function hunyuanIsUp() {
@@ -1021,8 +1135,17 @@ function hunyuanIsUp() {
     const req = http.request(
       { host: '127.0.0.1', port: HUNYUAN_PORT, path: '/health', method: 'GET' },
       (res) => {
-        res.resume();
-        resolve(res.statusCode === 200);
+        const chunks = [];
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () => {
+          if (res.statusCode !== 200) return resolve(false);
+          try {
+            const data = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+            resolve(data.engine_version === HUNYUAN_INSTALL_VERSION);
+          } catch {
+            resolve(false);
+          }
+        });
       }
     );
     req.setTimeout(1500, () => req.destroy());
@@ -1031,9 +1154,72 @@ function hunyuanIsUp() {
   });
 }
 
-async function startHunyuanServer() {
-  if (await hunyuanIsUp()) return true; // already running (e.g. started manually)
-  hunyuanStopping = false;
+function localEngineListenerPids() {
+  try {
+    return execFileSync('/usr/sbin/lsof', [
+      '-nP',
+      `-iTCP:${HUNYUAN_PORT}`,
+      '-sTCP:LISTEN',
+      '-t',
+    ], { encoding: 'utf8' })
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(Number)
+      .filter(Number.isInteger);
+  } catch {
+    return [];
+  }
+}
+
+async function stopStaleOwnedHunyuanServer() {
+  const expectedScript = path.join(HUNYUAN_SERVER_DIR, 'server.py');
+  let stopped = false;
+  for (const pid of localEngineListenerPids()) {
+    let command = '';
+    try {
+      command = execFileSync('/bin/ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8' }).trim();
+    } catch {}
+    if (!command.includes(expectedScript)) continue;
+    try {
+      process.kill(pid, 'SIGTERM');
+      stopped = true;
+    } catch {}
+  }
+  if (!stopped) return false;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    if (!localEngineListenerPids().length) return true;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return false;
+}
+
+async function startHunyuanServerOnce() {
+  await prepareHunyuanEngineFiles();
+  const runtime = hunyuanRuntimeStatus();
+  if (!runtime.ready) {
+    await stopStaleOwnedHunyuanServer();
+    appendHunyuanLog(`runtime bloqueado; faltan ${runtime.missing.join(',')}`);
+    return { started: false, needsInstall: true, missing: runtime.missing };
+  }
+  if (await hunyuanIsUp()) return; // already running (e.g. started manually)
+  // The first spawn can still be importing MLX while the renderer performs its
+  // initial health/bootstrap pass. Do not create a second Uvicorn process in
+  // that short interval before port 8765 starts accepting connections.
+  if (
+    hunyuanServerProc &&
+    hunyuanServerProc.exitCode === null &&
+    !hunyuanServerProc.killed
+  ) {
+    return { started: false, starting: true };
+  }
+  if (localEngineListenerPids().length) {
+    const stopped = await stopStaleOwnedHunyuanServer();
+    if (!stopped && localEngineListenerPids().length) {
+      console.warn('[hunyuan] el puerto 8765 está ocupado por otro proceso; no se reemplazará.');
+      return;
+    }
+  }
   const py = path.join(HUNYUAN_SERVER_DIR, 'venv', 'bin', 'python');
   const script = path.join(HUNYUAN_SERVER_DIR, 'server.py');
   if (!fs.existsSync(py) || !fs.existsSync(script)) {
@@ -1044,21 +1230,43 @@ async function startHunyuanServer() {
     return false;
   }
   try {
-    const proc = spawn(py, [script], {
+    const executionPlan = appleSiliconExecutionPlan({
+      logicalCores: os.cpus().length,
+      totalMemoryBytes: os.totalmem(),
+    });
+    appendHunyuanLog(`iniciando motor local; plan=${JSON.stringify(executionPlan)}`);
+    const logFd = fs.openSync(HUNYUAN_LOG_FILE, 'a', 0o600);
+    hunyuanServerProc = spawn(py, [script], {
       cwd: HUNYUAN_SERVER_DIR,
       env: {
-        ...process.env,
+        ...engineProcessEnv(process.env, os.homedir()),
+        XREALITY_ENGINE_TOKEN: getEngineToken(),
+        PYTHONUNBUFFERED: '1',
+        HF_HUB_OFFLINE: '0',
+        TRANSFORMERS_OFFLINE: '0',
+        XREALITY_MAX_SHAPE_SWAP_GROWTH_MB: '16384',
+        XREALITY_MAX_AGENTIC_SWAP_GROWTH_MB: '16384',
+        XREALITY_VALIDATION_WORKERS: String(executionPlan.validationWorkers),
+        XREALITY_MLX_CACHE_MIB: String(executionPlan.cacheMiB),
+        HF_HUB_CACHE: HUGGINGFACE_HUB_CACHE,
+        OMP_NUM_THREADS: String(executionPlan.mathThreads),
+        OPENBLAS_NUM_THREADS: String(executionPlan.mathThreads),
+        VECLIB_MAXIMUM_THREADS: String(executionPlan.mathThreads),
         ...(process.env.HUNYUAN3D_MLX_WEIGHTS_DIR
           ? { HUNYUAN3D_MLX_WEIGHTS_DIR: process.env.HUNYUAN3D_MLX_WEIGHTS_DIR }
           : {}),
       },
-      stdio: ['ignore', 'ignore', 'pipe'],
+      stdio: ['ignore', logFd, logFd],
     });
-    hunyuanServerProc = proc;
-    hunyuanLastError = null;
-    let stderrTail = '';
-    proc.stderr.on('data', (data) => {
-      stderrTail = `${stderrTail}${data.toString()}`.slice(-1400);
+    fs.closeSync(logFd);
+    const startedProc = hunyuanServerProc;
+    const startedAt = Date.now();
+    startedProc.on('exit', (code, signal) => {
+      hunyuanLastExit = { code, signal, at: new Date().toISOString() };
+      appendHunyuanLog(`motor finalizado code=${code ?? 'null'} signal=${signal ?? 'null'}`);
+      if (hunyuanServerProc === startedProc) hunyuanServerProc = null;
+      if (Date.now() - startedAt >= 30000) hunyuanRestartAttempts = 0;
+      if (!hunyuanShutdownRequested) scheduleHunyuanRestart();
     });
     proc.on('exit', (code) => {
       if (hunyuanServerProc === proc) hunyuanServerProc = null;
@@ -1076,23 +1284,40 @@ async function startHunyuanServer() {
   } catch (err) {
     hunyuanLastError = err.message;
     console.warn('[hunyuan] échec du démarrage du serveur 3D :', err.message);
-    return false;
+    appendHunyuanLog(`spawn del motor falló: ${err.message}`);
+    scheduleHunyuanRestart();
   }
 }
 
-async function waitForHunyuanServer(timeoutMs = 15000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (await hunyuanIsUp()) return true;
-    if (!hunyuanServerProc && hunyuanLastError) return false;
+function startHunyuanServer() {
+  if (hunyuanServerStartPromise) return hunyuanServerStartPromise;
+  hunyuanServerStartPromise = startHunyuanServerOnce().finally(() => {
+    hunyuanServerStartPromise = null;
+  });
+  return hunyuanServerStartPromise;
+}
+
+async function ensureHunyuanServerReady() {
+  if (await hunyuanIsUp()) {
+    hunyuanRestartAttempts = 0;
+    clearHunyuanRestartTimer();
+    return true;
+  }
+  await startHunyuanServer();
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    if (await hunyuanIsUp()) {
+      hunyuanRestartAttempts = 0;
+      clearHunyuanRestartTimer();
+      return true;
+    }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  hunyuanLastError ||= 'El servidor 3D no respondió dentro del tiempo esperado.';
   return false;
 }
 
 function stopHunyuanServer() {
-  hunyuanStopping = true;
+  hunyuanShutdownRequested = true;
+  clearHunyuanRestartTimer();
   if (hunyuanServerProc) {
     try {
       hunyuanServerProc.kill('SIGTERM');
@@ -1102,15 +1327,26 @@ function stopHunyuanServer() {
 }
 
 ipcMain.handle('hunyuan:health', async () => {
+  const runtime = hunyuanRuntimeStatus();
+  if (!runtime.ready) {
+    return {
+      up: false,
+      needsInstall: true,
+      error: `El motor local requiere actualización (${runtime.missing.join(', ')}).`,
+    };
+  }
   try {
     const r = await hunyuanRequest({
       method: 'GET',
       pathName: '/health',
       timeout: 2000,
     });
-    if (r.statusCode !== 200) return { up: false, error: hunyuanLastError };
-    hunyuanLastError = null;
-    return { up: true, ...JSON.parse(r.body) };
+    if (r.statusCode !== 200) return { up: false };
+    const data = JSON.parse(r.body);
+    if (data.engine_version !== HUNYUAN_INSTALL_VERSION) {
+      return { up: false, error: 'El motor local activo es de una versión anterior.' };
+    }
+    return { up: true, ...data };
   } catch {
     return { up: false, error: hunyuanLastError };
   }
@@ -1151,21 +1387,13 @@ ipcMain.handle('hunyuan:install', async () => {
   if (hunyuanInstallProc) {
     return { ok: false, error: 'La instalación del motor ya está en curso.' };
   }
-  const space = assertFreeSpace(HUNYUAN_SERVER_DIR, MIN_ENGINE_INSTALL_FREE_BYTES, 'Instalación del motor 3D');
-  if (!space.ok) return space;
-  let installedVersion = '';
-  try { installedVersion = fs.readFileSync(path.join(HUNYUAN_SERVER_DIR, '.installed'), 'utf8').trim(); } catch {}
-  const installed =
-    installedVersion === HUNYUAN_INSTALL_VERSION &&
-    fs.existsSync(path.join(HUNYUAN_SERVER_DIR, 'venv', 'bin', 'python')) &&
-    fs.existsSync(path.join(HUNYUAN_SERVER_DIR, 'Hunyuan3D-2.1-mlx', '.git'));
-  if (installed) {
-    const started = await startHunyuanServer();
-    if (!started || !(await waitForHunyuanServer())) {
-      return { ok: false, error: hunyuanLastError || 'No fue posible iniciar el servidor 3D.' };
-    }
+  await prepareHunyuanEngineFiles();
+  if (hunyuanRuntimeStatus().ready) {
+    await startHunyuanServer();
     return { ok: true, cached: true };
   }
+  stopHunyuanServer();
+  await stopStaleOwnedHunyuanServer();
   const setup = path.join(HUNYUAN_SERVER_DIR, 'setup.sh');
   if (!fs.existsSync(setup)) {
     return { ok: false, error: 'No se encontró el instalador del motor 3D.' };
@@ -1174,7 +1402,7 @@ ipcMain.handle('hunyuan:install', async () => {
     const output = [];
     hunyuanInstallProc = spawn('/bin/zsh', [setup], {
       cwd: HUNYUAN_SERVER_DIR,
-      env: process.env,
+      env: engineProcessEnv(process.env, os.homedir()),
     });
     hunyuanInstallProc.stdout.on('data', (data) => output.push(data.toString()));
     hunyuanInstallProc.stderr.on('data', (data) => output.push(data.toString()));
@@ -1224,17 +1452,31 @@ ipcMain.handle('hunyuan:pickImage', async () => {
   };
 });
 
+ipcMain.handle('hunyuan:admitMultiView', async (_event, params) => {
+  try {
+    if (!(await ensureHunyuanServerReady())) return { ok: false, error: 'Motor multi-vista no disponible.' };
+    const views = (params?.views || []).map((view) => ({
+      view_id: view.viewId,
+      evidence_class: 'measured',
+      sha256: createHash('sha256').update(Buffer.from(view.base64, 'base64')).digest('hex'),
+    }));
+    const response = await hunyuanRequest({ method: 'POST', pathName: '/multiview/admit', timeout: 10000, body: { views, profile: params?.profile || 'xreal' } });
+    return response.statusCode === 200 ? JSON.parse(response.body) : { ok: false, error: `HTTP ${response.statusCode}` };
+  } catch (error) { return { ok: false, error: error.message }; }
+});
+
+ipcMain.handle('hunyuan:multiViewStatus', async () => {
+  try {
+    if (!(await ensureHunyuanServerReady())) return { available: false, state: 'unavailable', reason_code: 'engine_unavailable' };
+    const response = await hunyuanRequest({ method: 'GET', pathName: '/multiview/status', timeout: 10000 });
+    return response.statusCode === 200 ? JSON.parse(response.body) : { available: false, state: 'unavailable', reason_code: `http_${response.statusCode}` };
+  } catch (error) { return { available: false, state: 'unavailable', reason_code: 'status_failed', detail: error.message }; }
+});
+
 // Start a job and poll until done. The mesh build is long (~9 min), so we poll
 // the server's job status rather than holding one giant request.
 ipcMain.handle('hunyuan:generate3D', async (event, params) => {
-  const { imageBase64, steps, octree, texture, textureSize, materialProfile, targetFaces, scale, profile, category, guidance, backgroundMode, subjectPadding, pivot, pivotCustom, upAxis, units, mock, missionId } = params;
-  const missionFailure = (payload) => {
-    transitionMission(missionId, {
-      type: payload.cancelled ? 'cancelled' : 'failed',
-      error: payload.error,
-    });
-    return payload;
-  };
+  const { imageBase64, multiViewImages, useMultiviewShape, steps, octree, texture, textureSize, paintBackend, materialHint, targetFaces, scale, profile, category, guidance, backgroundMode, subjectPadding } = params;
   hunyuanCancelled = false;
   try {
     transitionMission(missionId, { type: 'stage', skillId: 'reference.guard' });
@@ -1246,6 +1488,27 @@ ipcMain.handle('hunyuan:generate3D', async (event, params) => {
       status: 'starting',
     });
     await Promise.all([releaseOmlxGenerationMemory(), releaseOllamaGenerationMemory()]);
+    event.sender.send('hunyuan:progress', {
+      stage: 'Liberando memoria del sistema y Ollama…',
+      progress: 1,
+      percent: 1,
+      remaining: null,
+      status: 'starting',
+    });
+    await unloadAllOllamaModels();
+    event.sender.send('hunyuan:progress', {
+      stage: 'Verificando motor local',
+      progress: 2,
+      percent: 2,
+      remaining: null,
+      status: 'starting',
+    });
+    if (!(await ensureHunyuanServerReady())) {
+      return {
+        ok: false,
+        error: `El motor 3D no respondió después del reinicio automático. Revisa ${HUNYUAN_LOG_FILE}.`,
+      };
+    }
     event.sender.send('hunyuan:progress', {
       stage: 'Preparando referencia',
       progress: 4,
@@ -1259,11 +1522,14 @@ ipcMain.handle('hunyuan:generate3D', async (event, params) => {
       timeout: 30000,
       body: {
         image_base64: imageBase64,
+        multi_view_images: multiViewImages || {},
+        use_multiview_shape: useMultiviewShape === true,
         steps: steps || 30,
         octree_resolution: octree || 256,
         texture: !!texture,
-        texture_size: textureSize === '1K' ? '1K' : '2K',
-        material_profile: materialProfile || 'auto',
+        texture_resolution: textureSize === '1K' ? 1024 : 2048,
+        paint_backend: paintBackend || 'fast',
+        material_hint: materialHint || 'auto',
         target_faces: targetFaces || 50000,
         scale_meters: scale || 1,
         profile: profile || 'xreal',
@@ -1271,11 +1537,6 @@ ipcMain.handle('hunyuan:generate3D', async (event, params) => {
         guidance: guidance || 6.0,
         background_mode: backgroundMode || 'auto',
         subject_padding: subjectPadding || 0.16,
-        pivot: pivot || 'center',
-        pivot_custom: Array.isArray(pivotCustom) ? pivotCustom : null,
-        up_axis: upAxis || 'y',
-        units: units || 'm',
-        mock: !!mock,
       },
     });
     if (startRes.statusCode !== 200) {
@@ -1290,7 +1551,9 @@ ipcMain.handle('hunyuan:generate3D', async (event, params) => {
     hunyuanActiveJobId = job_id;
     let consecutivePollFailures = 0;
 
-    // Poll loop.
+    // Poll quickly during queue/startup, then at a steady cadence.
+    let pollDelay = 300;
+    let consecutivePollErrors = 0;
     for (;;) {
       if (hunyuanCancelled) {
         await hunyuanCancelCurrentJob();
@@ -1321,11 +1584,43 @@ ipcMain.handle('hunyuan:generate3D', async (event, params) => {
         });
         continue;
       }
-      const js = JSON.parse(s.body);
-      const activeSkill = skillForPipelineState(js.state);
-      if (activeSkill) {
-        transitionMission(missionId, { type: 'stage', skillId: activeSkill });
+      await new Promise((r) => setTimeout(r, pollDelay));
+
+      let s;
+      try {
+        s = await hunyuanRequest({
+          method: 'GET',
+          pathName: `/status/${job_id}`,
+          timeout: 60000,
+        });
+        consecutivePollErrors = 0;
+      } catch (pollErr) {
+        consecutivePollErrors += 1;
+        console.warn(`[hunyuan] status poll exception (${consecutivePollErrors}): ${pollErr.message}`);
+        // If Python backend is busy calculating dense MLX / decimation / textures, DO NOT ABORT!
+        if (consecutivePollErrors < 60) {
+          pollDelay = 1500;
+          continue;
+        }
+        throw pollErr;
       }
+
+      if (s.statusCode !== 200) {
+        console.warn(`[hunyuan] status poll returned HTTP ${s.statusCode}, retrying...`);
+        pollDelay = 1500;
+        continue;
+      }
+
+      let js;
+      try {
+        js = JSON.parse(s.body);
+      } catch (parseErr) {
+        console.warn(`[hunyuan] status poll JSON parse error, retrying...`);
+        pollDelay = 1000;
+        continue;
+      }
+
+      pollDelay = js.status === 'queued' ? 300 : 750;
       event.sender.send('hunyuan:progress', {
         jobId: job_id,
         state: js.state,
@@ -1335,32 +1630,36 @@ ipcMain.handle('hunyuan:generate3D', async (event, params) => {
         remaining: null,
         status: js.status,
       });
+
       if (js.status === 'done') {
-        const buf = await fsp.readFile(js.glb_path);
         hunyuanActiveJobId = null;
-        transitionMission(missionId, { type: 'stage', skillId: 'delivery.manifest' });
-        transitionMission(missionId, { type: 'done' });
+        let glbBase64 = null;
+        if (js.glb_path && fs.existsSync(js.glb_path)) {
+          try {
+            glbBase64 = fs.readFileSync(js.glb_path).toString('base64');
+          } catch (readErr) {
+            console.warn('[hunyuan] Failed to read glb to base64:', readErr.message);
+          }
+        }
         return {
           ok: true,
-          glbBase64: buf.toString('base64'),
           glbPath: js.glb_path,
-          lodPaths: js.lod_paths,
+          glbBase64,
+          usdzPath: js.usdz_path || null,
           faces: js.faces,
           duration: js.elapsed,
           reportPath: js.report_path,
           qualityLevel: js.quality_level,
           qualityScore: js.quality_score,
           qualityText: js.quality_text,
-          lowpolyRefinement: js.lowpoly_refinement,
-          textureApplied: !!js.texture_applied,
-          textureRequested: !!js.texture_requested,
-          textureSize: js.texture_size,
-          textureReport: js.texture_report,
-          shapeGlbPath: js.shape_glb_path,
-          pivot: js.pivot,
-          pivotCustom: js.pivot_custom,
-          upAxis: js.up_axis,
-          units: js.units,
+          textureApplied: js.texture_applied === true,
+          textureReport: js.texture_report || null,
+          shapeGlbPath: js.shape_glb_path || null,
+          masterGlbPath: js.master_glb_path || null,
+          executionPlan: js.execution_plan || null,
+          material: js.material || null,
+          artDirector: js.art_director || null,
+          buffaloStrategy: js.buffalo_strategy || null,
         };
       }
       if (js.status === 'error') {
@@ -1368,6 +1667,11 @@ ipcMain.handle('hunyuan:generate3D', async (event, params) => {
         return missionFailure({ ok: false, error: js.error || 'Génération 3D échouée.' });
       }
       if (js.status === 'unknown') {
+        consecutivePollErrors += 1;
+        if (consecutivePollErrors < 10) {
+          pollDelay = 1000;
+          continue;
+        }
         hunyuanActiveJobId = null;
         return missionFailure({ ok: false, error: 'Job 3D introuvable.' });
       }
@@ -1378,9 +1682,10 @@ ipcMain.handle('hunyuan:generate3D', async (event, params) => {
     if (err.code === 'ECONNREFUSED') {
       return missionFailure({
         ok: false,
-        error:
-          'Serveur 3D non démarré. Lance-le : cd hunyuan3d-mlx && ./venv/bin/python server.py',
-      });
+        error: `El motor 3D se detuvo durante la conversión. Log: ${HUNYUAN_LOG_FILE}${
+          hunyuanLastExit ? ` (${JSON.stringify(hunyuanLastExit)})` : ''
+        }`,
+      };
     }
     return missionFailure({ ok: false, error: err.message });
   }
@@ -1412,75 +1717,22 @@ ipcMain.handle('hunyuan:convertStl', async (_event, { glbPath, targetMm }) => {
   }
 });
 
-ipcMain.handle('hunyuan:textureGlb', async (_event, { glbPath, imageBase64, textureSize, materialProfile, category, missionId }) => {
-  const missionFailure = (payload) => {
-    transitionMission(missionId, { type: 'failed', error: payload.error });
-    return payload;
-  };
+// Convert a generated GLB into a strict, RealityKit-compatible OpenUSD package.
+ipcMain.handle('hunyuan:convertOpenUsd', async (_event, { glbPath }) => {
   try {
-    transitionMission(missionId, { type: 'stage', skillId: 'material.paint' });
     const r = await hunyuanRequest({
       method: 'POST',
-      pathName: '/texture',
-      timeout: 1200000,
-      body: {
-        glb_path: glbPath,
-        image_base64: imageBase64,
-        texture_size: textureSize === '1K' ? '1K' : '2K',
-        material_profile: materialProfile || 'auto',
-        category: category || 'custom',
-      },
+      pathName: '/to-openusd',
+      timeout: 120000,
+      body: { glb_path: glbPath, format: 'usdz' },
     });
-    if (r.statusCode !== 200) return missionFailure({ ok: false, error: `HTTP ${r.statusCode}` });
-    const js = JSON.parse(r.body);
-    if (!js.ok) return missionFailure(js);
-    const buf = await fsp.readFile(js.glb_path);
-    transitionMission(missionId, { type: 'stage', skillId: 'quality.pbr_gate' });
-    transitionMission(missionId, { type: 'stage', skillId: 'delivery.manifest' });
-    transitionMission(missionId, { type: 'done' });
-    return {
-      ok: true,
-      glbBase64: buf.toString('base64'),
-      glbPath: js.glb_path,
-      textureApplied: !!js.texture_applied,
-      textureSize: js.texture_size,
-      textureReport: js.texture_report,
-    };
+    if (r.statusCode !== 200) return { ok: false, error: `HTTP ${r.statusCode}` };
+    return JSON.parse(r.body);
   } catch (err) {
     if (err.code === 'ECONNREFUSED') {
-      return missionFailure({ ok: false, error: 'Serveur 3D non démarré.' });
+      return { ok: false, error: 'El motor 3D local no está iniciado.' };
     }
-    return missionFailure({ ok: false, error: err.message });
-  }
-});
-
-ipcMain.handle('hunyuan:cacheReference', async (_event, { dataUrl, base64, filename }) => {
-  ensureDir(REFERENCE_CACHE_DIR);
-  const source = dataUrl || base64 || '';
-  const match = /^data:image\/([a-z0-9+.-]+);base64,(.+)$/i.exec(source);
-  const clean = match ? match[2] : source.replace(/^data:image\/\w+;base64,/, '');
-  if (!clean) return null;
-  const ext = match?.[1] === 'jpeg' ? 'jpg' : match?.[1] || 'png';
-  const safeBase = String(filename || `${Date.now()}-reference`)
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 96) || `${Date.now()}-reference`;
-  const filePath = path.join(REFERENCE_CACHE_DIR, `${safeBase}.${ext}`);
-  await fsp.writeFile(filePath, Buffer.from(clean, 'base64'));
-  return filePath;
-});
-
-ipcMain.handle('hunyuan:readReference', async (_event, filePath) => {
-  try {
-    const approved = resolveWithinRoots(filePath, [REFERENCE_CACHE_DIR]);
-    if (!approved || !fs.existsSync(approved)) return null;
-    const ext = path.extname(approved).toLowerCase();
-    const mime = ext === '.jpg' || ext === '.jpeg' ? 'jpeg' : ext === '.webp' ? 'webp' : 'png';
-    const buf = await fsp.readFile(approved);
-    return `data:image/${mime};base64,${buf.toString('base64')}`;
-  } catch {
-    return null;
+    return { ok: false, error: err.message };
   }
 });
 
@@ -1518,7 +1770,36 @@ ipcMain.handle('hunyuan:saveGlb', async (_event, { srcPath, base64, filename }) 
   return dest;
 });
 
-// --- Window ----------------------------------------------------------------
+// --- Meshy AI Cloud API Handlers -------------------------------------------
+const meshyRuntime = new MeshyRuntime(APP_SUPPORT_DIR);
+
+ipcMain.handle('meshy:getApiKey', async () => {
+  return meshyRuntime.getApiKey();
+});
+
+ipcMain.handle('meshy:saveApiKey', async (_event, apiKey) => {
+  return meshyRuntime.saveApiKey(apiKey);
+});
+
+ipcMain.handle('meshy:getCredits', async (_event, apiKey) => {
+  return meshyRuntime.getCredits(apiKey);
+});
+
+ipcMain.handle('meshy:generate3D', async (_event, params) => {
+  return meshyRuntime.generate3D(params, (progressPayload) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('hunyuan:progress', progressPayload);
+    }
+  });
+});
+
+ipcMain.handle('meshy:cancel', async () => {
+  meshyRuntime.cancel();
+  return { ok: true };
+});
+
+let mainWindow = null;
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1280,
@@ -1534,7 +1815,29 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
+      backgroundThrottling: false,
     },
+  });
+
+  mainWindow = win;
+  win.on('closed', () => {
+    mainWindow = null;
+  });
+
+  win.webContents.on('render-process-gone', (_event, details) => {
+    appendHunyuanLog(`[Electron] Renderer crash: reason=${details.reason} exitCode=${details.exitCode}`);
+    console.error('[Electron] Render process gone:', details);
+    if (!win.isDestroyed() && details.reason !== 'clean-exit') {
+      dialog.showErrorBox(
+        'Reinicio de interfaz por presión de memoria',
+        `La ventana gráfica se detuvo (${details.reason}). Se recargará para recuperar el control.`
+      );
+      win.reload();
+    }
+  });
+
+  win.on('unresponsive', () => {
+    appendHunyuanLog('[Electron] Ventana no responde temporalmente (alta carga)');
   });
 
   if (isDev) {
@@ -1554,7 +1857,10 @@ app.on('second-instance', () => {
 
 app.whenReady().then(() => {
   ensureDir(APP_SUPPORT_DIR);
-  prepareHunyuanEngineFiles();
+  getEngineToken();
+  try {
+    app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
+  } catch {}
   if (process.platform === 'darwin' && app.dock?.setIcon) {
     const dockIcon = path.join(__dirname, '..', 'build', 'icon.png');
     if (fs.existsSync(dockIcon)) {
@@ -1562,13 +1868,25 @@ app.whenReady().then(() => {
     }
   }
   createWindow();
-  startHunyuanServer(); // fire-and-forget; renderer flips to "serveur OK" once up
+  // Show the UI before copying/checking the engine. The versioned async copy
+  // is skipped entirely on normal launches.
+  startHunyuanServer().catch((error) => {
+    console.warn('[hunyuan] no se pudo preparar el motor local:', error.message);
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 }
+
+app.on('second-instance', () => {
+  const [win] = BrowserWindow.getAllWindows();
+  if (!win) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+});
 
 // Shut the 3D server down with the app (only if we started it).
 app.on('before-quit', stopHunyuanServer);

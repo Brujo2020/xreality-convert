@@ -1,41 +1,27 @@
-2026-07-19: Python tests run as `python3 -m unittest engine.test_*` need explicit `engine/` sys.path when importing sibling modules.
-2026-07-20: Ollama reasoning models can return HTTP 200 with empty `response` after spending output on thinking; Code 3D must send `think:false`, reserve `num_predict`, and normalize response shapes.
-2026-07-20: Local model inventory must include authenticated oMLX `/v1/models/status`; Ollama `/api/tags` alone hides installed MLX coder models and misroutes Code 3D.
-2026-07-20: Engine unit tests use system Python without runtime-only PBR packages; keep `pygltflib` imports lazy so fake Paint tests stay dependency-isolated.
-2026-07-20: The Hunyuan `texture` request was metadata-only; real PBR requires invoking `Hunyuan3DPaintPipelineMLX` after Shape, clearing MLX cache, and gating the GLB on embedded base-color and metallic-roughness textures.
-2026-07-20: Cleanup must not import `mlx.core` in fake/system-Python tests; clear Metal cache only when the runtime already loaded MLX.
-2026-07-20: Reducing Paint 1K from 6 to 4 views kept PBR valid but regressed wall time 59.99s→69.20s with negligible memory gain; preserve 6-view quality and optimize model coexistence instead.
-2026-07-20: DMG packaging needs write access to `~/Library/Caches/electron`; Vite can pass while electron-builder fails under a restricted filesystem.
-2026-07-21: System Python lacks `trimesh`; geometry delivery changes need fake-mesh unit coverage here and runtime validation later in the Hunyuan environment.
-2026-07-20: PBR packaging needs `engine/Hunyuan3D-2.1-mlx/hy3dpaint/**/*` in both `build.files` and `build.asarUnpack`; scripts-only packaging makes texture generation fail in the DMG.
-2026-07-21: Image prompt enrichment must avoid the word `silhouette` for animals/custom subjects; FLUX/Klein can literalize it as a black cutout instead of a photorealistic reference.
-2026-07-21: PBR continuation must persist reference images by path and rehydrate shape GLBs from history; otherwise E2E texture/comparator only works in the original in-memory session.
-2026-07-21: A GLB can pass PBR structure validation while the renderer shows gray; verify embedded UV textures are actually visible in Three.js and avoid carrying lowpoly delivery into organic image-to-3D runs.
-2026-07-21: Organic image-to-3D must be guarded server-side against `profile=lowpoly`; UI state, presets, or history can still send stale lowpoly params.
-2026-07-22: Texture references alone do not prove a self-contained GLB; require referenced `bufferView` image bytes with a valid PNG/JPEG/WebP signature.
-2026-07-22: COST T3, 2 verify iterations, pass.
-2026-07-26: Un test de catálogo no debe buscar `exec` sobre el JSON completo porque coincide con la clave segura `executor`; validar URLs/comandos prohibidos y allowlist por separado.
-2026-07-26: Root cause de VERIFY fallido: el entorno Python del motor está en `engine/venv`, no en `.venv`; usar `engine/venv/bin/python`.
-2026-07-26: Los unittest del engine importan módulos vecinos como top-level; ejecutarlos con `cwd=engine`, no desde la raíz.
-2026-07-26: Un fixture de segmentación no debe tocar el borde: `_foreground_mask` estima el fondo desde esos píxeles y altera el resultado.
-2026-07-26: Desde el checkout anidado Hunyuan, el Python del motor es `../venv/bin/python`, no `venv/bin/python`.
-2026-07-26: No usar `Date.now()` como detector único de mutación: dos transiciones finales en el mismo milisegundo pueden ocultar `done`; mantener timestamps lógicos monotónicos.
-2026-07-26: En React StrictMode no marcar un preview async como resuelto antes del `then`; el cleanup del primer efecto puede descartar el resultado y bloquear la segunda ejecución.
-2026-07-26: COST T3, 3 audit agents, 2 verify iterations, pass.
-2026-07-24: Un gate GLB estructural no detecta una textura semánticamente mala; anclar la vista frontal a la imagen fuente y reservar difusión para zonas ocultas preserva identidad sin cambiar la geometría.
-2026-07-22: Root cause de VERIFY fallido: el repo no define `npm test`; usar el script real `npm run test:tools`.
-2026-07-22: Hunyuan Paint `use_remesh=True` reprocesa una malla ya optimizada y puede invalidar el presupuesto/fidelidad Low Poly; texturizar con `use_remesh=False` tras el gate geométrico.
-2026-07-22: Meshoptimizer 1.1 viene dentro de Three.js como WASM ESM, pero el engine Python empaquetado no tiene acceso seguro al módulo dentro de app.asar; no añadir un bridge Node no portable.
-2026-07-22: Tras electron-builder, verificar la firma de la app dentro del DMG montado; la copia suelta puede fallar aunque el artefacto empaquetado sea válido.
-2026-07-22: Añadir un módulo Python importado por `server.py` exige incluirlo tanto en packaging como en `prepareHunyuanEngineFiles`; si no, el server instalado muere antes de `/health`.
-2026-07-22: La limpieza best-effort de temporales no puede abortar el arranque por un solo `PermissionError`; omitir el archivo bloqueado y continuar.
-2026-07-22: Verificar imports del runtime con `cwd` en su carpeta engine; `python -c` no agrega automáticamente Application Support a `sys.path`.
-2026-07-24: Antes de añadir otra arena o router, reutilizar `benchmark-arena-model-registry-design.md`; ya fija corpus sellado, orden ciego determinista, aislamiento y promoción estadística.
-2026-07-24: El preset Paint 1K había recaído a 4 vistas/256 pese al benchmark adverso; mantenerlo en 6 vistas/512 y cubrir el perfil exacto con test.
-2026-07-24: `unittest` no puede importar por ruta punteada un directorio llamado `Hunyuan3D-2.1-mlx`; ejecutar sus pruebas con `discover -s <tests> -p <archivo>`.
-2026-07-24: `setup.sh --preflight` quedaba detrás del retorno por instalación existente; las acciones de diagnóstico deben resolverse antes de reutilizar el runtime.
-2026-07-24: La prueba Shape vive en `Hunyuan3D-2.1-mlx/tests`, no en `hy3dshape/tests`; ejecutar verificaciones separadas para no ocultar un fallo con el exit code del último comando.
-2026-07-22: GLTFLoader materializa imágenes GLB embebidas mediante URLs `blob:`; una CSP `img-src` limitada a `self data:` produce GLB gris aunque los mapas y UV sean válidos.
-2026-07-22: Pre-decimation component metrics hid hundreds of fragments created later; audit and gate the final simplified mesh before Paint/export.
-2026-07-22: `trimesh.repair.stitch` cannot generically repair these open GLBs, and Quick Look produced no thumbnail; use topology gates plus a deterministic local mesh render.
-2026-07-22: COST T3, 2 verify iterations, pass.
+- 2026-08-01: Un GLB PBR estructuralmente válido y una vista frontal aceptable pueden ocultar fragmentación grave a 30°; validar evidencia neutral multivista antes de publicar.
+- 2026-08-01: Tencent Cloud Hunyuan 3D 3.1 acepta hasta ocho vistas y no equivale al modelo abierto Hunyuan3D 2.1 local; no declarar paridad de servicio.
+- 2026-08-01: El primer microbenchmark del gate llamó el rasterizador en vez de enviarlo al executor; guardar futuros de `submit(...)` antes de medir paralelismo.
+- 2026-08-01: Tres threads de raster Python fueron 1.9 s frente a 1.0 s serial en 512 px; paralelizar hashes/PNG y vectorizar culling, no el loop por cara.
+- 2026-08-01: MLX 0.32 deprecó los controles `mx.metal.*`; usar `mx.set_cache_limit`, `mx.clear_cache` y métricas top-level para no heredar warnings.
+- 2026-08-01: El smoke Electron reveló que CSP sin `blob:` bloqueaba texturas GLB embebidas; verificar consola real y permitir `blob:` solo en `img-src`/`connect-src`.
+- 2026-08-01: `renderer.setSize(..., false)` con pixel ratio 1.5 dejó el canvas a 1.5x CSS y recortó el modelo; permitir que Three actualice el tamaño CSS.
+- 2026-08-01: Un `server.py` huérfano con PPID 1 mantuvo el puerto 8765 por horas; exigir `engine_version` y reemplazar solo el listener cuya ruta coincide exactamente con el engine propio.
+- 2026-08-01: Copiar un servidor nuevo sin validar `.installed` y la revisión Shape arrancó código v6 sobre runtime v4; versión de servidor, instalador y fuente empaquetada deben avanzar como un solo contrato.
+- 2026-08-01: El pipeline sí podía seguir calculando mientras la UI quedaba fija en 15%; publicar progreso por paso del denoiser y persistir la salida del proceso para separar lentitud de caída.
+- 2026-08-01: El paquete Shape es namespace desde la raíz Hunyuan; el preflight requiere `PYTHONPATH=$SOURCE`, no `$SOURCE/hy3dshape`, o `hy3dshape.hy3dshape` deja de resolver.
+- 2026-08-01: Dos bundles abiertos en paralelo pueden superar el chequeo libre del puerto y lanzar dos Uvicorn; adquirir el lock de instancia única antes de iniciar el motor.
+- 2026-08-02: Para consultar HF online hay que retirar `HF_HUB_OFFLINE` y `TRANSFORMERS_OFFLINE`; cualquiera de las dos mantiene el Hub sin red.
+- 2026-08-02: Un comando posterior ocultó el exit code de una inferencia fallida; usar `set -e` o preservar el retorno del proveedor antes de imprimir métricas.
+- 2026-08-02: El gate Paint aprobó un zorro visiblemente fragmentado y embarrado; la promoción requiere umbral arena más estricto y aceptación visual humana/ciega.
+- 2026-08-02: Este checkout no define `test:tools`; verificar `package.json` y ejecutar `test:runtime`, `test:engine`, arena y build en vez de asumir scripts de otra revisión.
+- 2026-08-02: Los SHA256 AgenticVibes inferidos antes de descargar no coincidían; el preflight profundo detectó el error y el manifiesto se corrigió con hashes de los bytes locales fijados.
+- 2026-08-02: TRELLIS.2 Apple encontró Xcode pero no su componente Metal Toolchain; `mtldiffrast` no compila y sus tres pruebas se omiten, así que no hay evidencia E2E.
+- 2026-08-02: `requirements_macos.txt` de TRELLIS apunta extensiones a `main` y exige Transformers `<5`; fijar commits y aislar entorno antes de instalar.
+- 2026-08-02: xocialize TRELLIS2 Swift compila y pasa gates offline, pero hasta res512 declara 18 GB residentes + 18 GB de activación; un Mac de 24 GB debe rechazarlo antes de inferir.
+- 2026-08-02: Metal Toolchain 17F109 se instaló y mtldiffrast pasó 3/3; como `xcode-select` sigue en CommandLineTools, los builds Metal deben fijar `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer`.
+- 2026-08-02: cumesh importa `mtlbvh` en macOS aunque no lo declara en su metadata ni requirements; fijar el commit del submódulo antes del smoke.
+- 2026-08-02: TRELLIS E2E no debe descargar 16.2 GB si los preflights de DINOv3 y RMBG responden `Access denied`; resolver aprobaciones HF primero.
+- 2026-08-02: TRELLIS importa `easydict` durante el pipeline pero `requirements_macos.txt` no lo declara; el entorno E2E debe fijarlo explícitamente.
+- 2026-08-02: El venv arena conservó paquetes pero sus symlinks apuntaban a un Python 3.11 eliminado; verificar el intérprete antes de atribuir fallos a los tests.
+- 2026-08-02: Un download HF fijado por commit no crea necesariamente `refs/main`; ports offline deben pasar la revisión explícita a cada `hf_hub_download`.
+- 2026-08-02: `trimesh.split()` agotó memoria al auditar un GLB muy fragmentado; contar etiquetas de componentes evita materializar miles de meshes.

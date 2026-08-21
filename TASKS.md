@@ -49,9 +49,9 @@ Estado de corte 2026-07-19: versión actual cerrada por aprobación del usuario 
 - [x] Health check con estados degradados diferenciados.
 - [x] Reinicio automático con backoff y límite.
 - [x] Verificación de espacio libre antes de instalar/generar.
-- [x] Checksum y reparación selectiva de instalación.
-- [x] Logs estructurados por job, etapa, duración y error.
-- [x] Limpieza segura de temporales antiguos.
+- [ ] Checksum y reparación selectiva de instalación.
+- [ ] Logs estructurados por job, etapa, duración y error.
+- [ ] Limpieza segura de temporales antiguos.
 
 ## Evolución futura — P1 Inteligencia contextual
 

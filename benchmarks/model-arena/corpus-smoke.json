@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {"id": "shape-demo", "lanes": ["image_to_mesh"], "assets": {"image": "engine/Hunyuan3D-2.1-mlx/assets/demo.png"}},
+    {"id": "shape-animal", "lanes": ["image_to_mesh"], "assets": {"image": "engine/Hunyuan3D-2.1-mlx/assets/example_images/ainimal_21.png"}},
+    {"id": "paint-fox", "lanes": ["mesh_image_to_pbr", "glb", "uv", "materials", "textures"], "assets": {"image": "engine/Hunyuan3D-2.1-mlx/hy3dpaint/assets/case_1/image.png", "mesh": "engine/Hunyuan3D-2.1-mlx/hy3dpaint/assets/case_1/mesh.glb"}},
+    {"id": "paint-mermaid", "lanes": ["mesh_image_to_pbr", "glb", "uv", "materials", "textures"], "assets": {"image": "engine/Hunyuan3D-2.1-mlx/hy3dpaint/assets/case_2/image.png", "mesh": "engine/Hunyuan3D-2.1-mlx/hy3dpaint/assets/case_2/mesh.glb"}}
+  ]
+}

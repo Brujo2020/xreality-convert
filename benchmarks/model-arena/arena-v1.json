@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "providers": [
+    {
+      "id": "dgrauet-hunyuan3d-2.1-mlx",
+      "state": "candidate",
+      "capabilities": {"image_to_mesh": true, "mesh_image_to_pbr": true, "pbr_glb": true, "uv": true, "materials": true, "textures": true},
+      "model": {
+        "repo": "dgrauet/hunyuan3d-2.1-mlx",
+        "revision": "aab209dc3a3c4da396bc934fd153b220f6d8d9d6",
+        "artifacts": [
+          {"path": "config.json", "size": 1322, "lanes": ["shape", "pbr"]},
+          {"path": "dit.safetensors", "size": 6101598440, "sha256": "eea6662cc5e153e5e71150f96c3e0b7a8bbe68261b15f1225819b16d64a7337b", "lanes": ["shape"]},
+          {"path": "image_encoder.safetensors", "size": 608791514, "sha256": "a15bafe34efdd009f950d3a1f08c89f37c57c41ebc06bf396e0b46e682380369", "lanes": ["shape"]},
+          {"path": "vae.safetensors", "size": 655540754, "sha256": "4444711b3739806fb3755b0a5cf7e11e56922a6f862b147ef814d858e075624c", "lanes": ["shape"]},
+          {"path": "paint_unet.safetensors", "size": 3924728762, "sha256": "92b832523ec5ef75bb2a44dd6bc0eb491a33d635ec1921ea05bc48dcc0ae7546", "lanes": ["pbr"]},
+          {"path": "paint_dino.safetensors", "size": 2273013451, "sha256": "8f5c88f40ce1818052a8041de14a9f1384f03fc07526d92d2b79e4b77d5e5486", "lanes": ["pbr"]},
+          {"path": "paint_vae.safetensors", "size": 167335387, "sha256": "8f9a6854fdeb13b998b6ba76a6d74172c6a7e7c0f42f2ff4d26495e92a1a2453", "lanes": ["pbr"]},
+          {"path": "realesrgan_x4plus.safetensors", "size": 66857885, "sha256": "67fbfb07607e3457154dddf9d29dfa6c65f393c2c531af700ae4370499c978ff", "lanes": ["pbr-2k"]}
+        ]
+      },
+      "code": {"repo": "dgrauet/Hunyuan3D-2.1-mlx", "revision": "58e61ee5a86aec095387d9fcda343c1cab4aaa9e", "local_path": "engine/Hunyuan3D-2.1-mlx"}
+    },
+    {
+      "id": "agenticvibes-hunyuan-paint-mlx",
+      "state": "research",
+      "capabilities": {"image_to_mesh": false, "mesh_image_to_pbr": true, "pbr_glb": true, "uv": true, "materials": true, "textures": true},
+      "model": {"repo": "AgenticVibes/hunyuan3d-2.1-mlx", "revision": "06ff58f0778649cbfc18f393925373782c6a705b", "artifacts": [
+        {"path": "unet.npz", "size": 3925137412, "sha256": "ceea79adc19c9ee6b172fbb34afa6ca1491ece13f5a0cccc8f1b13ab4a81902f", "lanes": ["pbr"]},
+        {"path": "vae.npz", "size": 334692254, "sha256": "612425abcd98218665d098439d78c94c95704315af35f22e8b295adedd6f4e8d", "lanes": ["pbr"]}
+      ]},
+      "code": {"repo": "agenticvibes/ComfyUI-Hunyuan3D-Paint", "revision": "3d8e93106f4b91cfb3b24ffc311a3b432b091a86"},
+      "auxiliary_models": [
+        {"repo": "tencent/Hunyuan3D-2.1", "revision": "0b94677654c57bb9a6b6845cd7b704ccf551d327", "path": "hunyuan3d-paintpbr-v2-1"},
+        {"repo": "facebook/dinov2-giant", "revision": "611a9d42f2335e0f921f1e313ad3c1b7178d206d"}
+      ]
+    },
+    {
+      "id": "mirwox-hunyuan3d-2.1-mlx",
+      "state": "unavailable",
+      "capabilities": {"image_to_mesh": false, "mesh_image_to_pbr": false, "pbr_glb": false, "uv": false, "materials": false, "textures": false}
+    },
+    {
+      "id": "pedronaugusto-trellis2-apple",
+      "state": "research",
+      "capabilities": {"image_to_mesh": true, "mesh_image_to_pbr": false, "pbr_glb": true, "uv": true, "materials": true, "textures": true},
+      "code": {"repo": "pedronaugusto/trellis2-apple", "revision": "6055b868734af6e12769d229d90580e775fae9f0"},
+      "native_dependencies": [
+        {"repo": "pedronaugusto/mtldiffrast", "revision": "4668cd91cb6d27f5e264731f94a06841fbf7aab8"},
+        {"repo": "pedronaugusto/mtlmesh", "revision": "212079e55772cff3d648a21372392c37e0643f3b"},
+        {"repo": "pedronaugusto/mtlgemm", "revision": "867aec8234299a7fe1ede7f802c8debe5a939a82"},
+        {"repo": "pedronaugusto/mtlbvh", "revision": "23f441c470ce1f537e1fd836f3ffb5b8245f7975", "note": "undeclared runtime import pinned by mtlmesh submodule"}
+      ]
+    },
+    {
+      "id": "xocialize-trellis2-mlx-swift",
+      "state": "research",
+      "capabilities": {"image_to_mesh": true, "mesh_image_to_pbr": true, "pbr_glb": true, "uv": true, "materials": true, "textures": true},
+      "model": {"repo": "xocialize/trellis2-mlx", "revision": "bc4bc5b707601921261b50a7bb90068030bb0289", "artifacts": []},
+      "code": {"repo": "xocialize/mlx-trellis2-swift", "revision": "005a372280d56bea260657d4962f4230af6bfe4d"}
+    },
+    {
+      "id": "huanngzh-mv-adapter-sd21",
+      "state": "port-candidate",
+      "capabilities": {"image_to_mesh": false, "mesh_image_to_pbr": true, "pbr_glb": true, "uv": true, "materials": false, "textures": true},
+      "model": {
+        "repo": "huanngzh/mv-adapter",
+        "revision": "022b85eaeaea388286f620d80ae18ce8888c1c52",
+        "artifacts": [
+          {"path": "mvadapter_i2mv_sd21.safetensors", "size": 708000000, "sha256": "cf95469bc968efc5f042284a3043c66e940994d9f757a1a098b2403efb5d0016", "lanes": ["multiview-texture"]}
+        ]
+      },
+      "code": {"repo": "huanngzh/MV-Adapter", "revision": "4277e0018232bac82bb2c103caf0893cedb711be"},
+      "compatibility": {
+        "diffusion_core": "PyTorch device-parametric; SD2.1 variant is a plausible MPS/MLX port target",
+        "official_texturing_pipeline": "CUDA-only dependencies include nvdiffrast, cvcuda_cu12 and a custom CUDA Poisson solver",
+        "strategy": "reuse only multi-view generation and feed views into the existing Metal/MLX baker plus reference lock"
+      }
+    },
+    {
+      "id": "moonshotai-kimi-k3",
+      "state": "orchestrator",
+      "role": "judge",
+      "capabilities": {"image_to_mesh": false, "mesh_image_to_pbr": false, "pbr_glb": false, "uv": false, "materials": false, "textures": false},
+      "model": {"repo": "moonshotai/Kimi-K3", "revision": "9f62e4e9fffbd0a83ddd60e1c209d828994b3569", "artifacts": []}
+    }
+  ]
+}

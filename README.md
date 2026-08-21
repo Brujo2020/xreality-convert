@@ -2,9 +2,10 @@
 
 Xreality Convert is a standalone macOS app maintained in [Brujo2020/xreality-convert](https://github.com/Brujo2020/xreality-convert).
 
-[![Version](https://img.shields.io/badge/version-v1.2.2-0ea5e9?style=for-the-badge)](https://github.com/Brujo2020/xreality-convert/releases/tag/v1.2.2)
-[![Release](https://img.shields.io/github/v/release/Brujo2020/xreality-convert?style=for-the-badge&label=release)](https://github.com/Brujo2020/xreality-convert/releases/tag/v1.2.2)
-[![Download DMG](https://img.shields.io/badge/download-DMG-22c55e?style=for-the-badge)](https://github.com/Brujo2020/xreality-convert/releases/download/v1.2.2/Xreality.Convert-1.2.2-arm64.dmg)
+[![Version](https://img.shields.io/badge/version-v1.6.0-0ea5e9?style=for-the-badge)](https://github.com/Brujo2020/xr-image-3d-creator/releases/tag/v1.6.0)
+[![Release](https://img.shields.io/github/v/release/Brujo2020/xr-image-3d-creator?style=for-the-badge&label=release)](https://github.com/Brujo2020/xr-image-3d-creator/releases/tag/v1.6.0)
+[![Download DMG](https://img.shields.io/badge/download-DMG-22c55e?style=for-the-badge)](https://github.com/Brujo2020/xr-image-3d-creator/releases/download/v1.6.0/Xreality.Convert-1.6.0-arm64.dmg)
+
 
 Xreality Convert is a macOS desktop app for keeping local AI asset creation in one place:
 
@@ -47,7 +48,9 @@ La app está pensada para trabajar en local, con historial, diagnóstico y expor
 3. Launch the app.
 4. On first launch, if macOS shows a warning, right-click the app and choose `Open`.
 
-The release DMG is signed and notarized for safer installation on Mac.
+The local build is code-signed when a signing identity is available. Apple
+notarization is a separate release step and must be configured before claiming
+that a published DMG is notarized.
 
 ## Requirements
 
@@ -63,20 +66,7 @@ The release DMG is signed and notarized for safer installation on Mac.
 - Cancelable jobs and local history
 - Bilingual documentation and a current user manual
 - Native macOS branding, favicon, icon, and dock identity
-
-## Workflows
-
-### Image
-
-Use this mode to generate local images from prompts, then reuse them as references or export assets for the rest of the pipeline.
-
-### Text to 3D
-
-Use this mode to create a clean local reference with FLUX and reconstruct a production GLB with Hunyuan3D MLX. The legacy model-generated JSCAD executor is disabled.
-
-### Image to 3D
-
-Use this mode to rebuild a single object or subject into a local 3D asset. The app validates the image, runs the Hunyuan3D MLX engine, and blocks export when quality is too low.
+- Code-signed macOS packaging; notarization when configured for a release
 
 ## Quick Start
 

@@ -1,0 +1,16 @@
+#!/usr/bin/env zsh
+# 3D Local CLI Wrapper
+# Usage: ./bin/3d-local create "retro futuristic robot" --parts --pbr --rig --lod --target visionos
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+VENV_PYTHON="$ROOT_DIR/engine/venv/bin/python"
+
+if [ ! -f "$VENV_PYTHON" ]; then
+    VENV_PYTHON="python3"
+fi
+
+export PYTHONPATH="$ROOT_DIR/engine:$ROOT_DIR/engine/models:$PYTHONPATH"
+
+exec "$VENV_PYTHON" "$ROOT_DIR/engine/cli_orchestrator.py" "$@"

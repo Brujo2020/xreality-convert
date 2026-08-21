@@ -11,6 +11,12 @@ MATERIAL_PROFILES = {
     "metal": {"metallic": (0.62, 1.0, 0.86), "roughness": (0.18, 0.62, 0.4)},
     "matte_paint": {"metallic": (0.0, 0.08, 0.0), "roughness": (0.7, 0.96, 0.84)},
     "rust": {"metallic": (0.0, 0.22, 0.08), "roughness": (0.76, 0.98, 0.9)},
+    "plastic": {"metallic": (0.0, 0.03, 0.0), "roughness": (0.24, 0.8, 0.52)},
+    "rubber": {"metallic": (0.0, 0.02, 0.0), "roughness": (0.68, 0.98, 0.86)},
+    "ceramic": {"metallic": (0.0, 0.02, 0.0), "roughness": (0.18, 0.72, 0.42)},
+    "porcelain": {"metallic": (0.0, 0.02, 0.0), "roughness": (0.12, 0.48, 0.26)},
+    "glass": {"metallic": (0.0, 0.0, 0.0), "roughness": (0.02, 0.28, 0.12)},
+    "concrete": {"metallic": (0.0, 0.02, 0.0), "roughness": (0.72, 1.0, 0.88)},
     "organic_grass": {"metallic": (0.0, 0.01, 0.0), "roughness": (0.78, 0.98, 0.9)},
     "synthetic_grass": {"metallic": (0.0, 0.03, 0.0), "roughness": (0.58, 0.9, 0.76)},
 }

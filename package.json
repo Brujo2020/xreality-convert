@@ -1,6 +1,6 @@
 {
   "name": "xreality-convert",
-  "version": "1.2.12",
+  "version": "2.0.0",
   "description": "Conversor local de referencias a activos 3D optimizados para Xreality y spatial computing",
   "author": "Brujo2020",
   "license": "MIT",
@@ -15,49 +15,58 @@
     "test:tools": "node --test electron/tool-registry.test.js electron/process-backoff.test.js electron/hunyuan-recovery.test.js electron/file-sync.test.js electron/ollama-response.test.js electron/model-routing.test.js electron/local-orchestrator.test.js electron/path-policy.test.js electron/security-policy.test.js src/lib/toolSummary.test.js src/lib/promptEnrichment.test.js src/lib/deliveryEstimates.test.js src/lib/glbTextures.test.js src/lib/canonicalViews.test.js src/lib/lowPolySkill.test.js src/lib/uiStatus.test.js src/lib/errorActions.test.js src/lib/assetNaming.test.js engine/setup.test.js && npm run test:engine",
     "build:vite": "vite build",
     "build": "npm run build:vite && electron-builder",
+    "test:runtime": "node --test electron/hunyuan-runtime.test.cjs",
+    "test:engine": "/bin/zsh engine/test.sh",
+    "test:ui": "npm run build:vite && electron scripts/ui-smoke.cjs",
+    "test:all": "npm run test:runtime && node scripts/verify-full-e2e-suite.cjs && node scripts/e2e-wired-test.cjs",
     "preview": "vite preview"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.4",
-    "autoprefixer": "^10.4.20",
-    "concurrently": "^9.1.2",
-    "cross-env": "^7.0.3",
-    "electron": "^33.3.1",
-    "electron-builder": "^25.1.8",
-    "postcss": "^8.5.1",
-    "tailwindcss": "^3.4.17",
-    "vite": "^6.0.7",
-    "wait-on": "^8.0.1"
+    "@vitejs/plugin-react": "4.7.0",
+    "autoprefixer": "10.5.0",
+    "concurrently": "9.2.1",
+    "cross-env": "7.0.3",
+    "electron": "33.4.11",
+    "electron-builder": "25.1.8",
+    "postcss": "8.5.15",
+    "tailwindcss": "3.4.19",
+    "vite": "6.4.3",
+    "wait-on": "8.0.5"
   },
   "dependencies": {
-    "@jscad/modeling": "^2.13.0",
-    "@jscad/stl-serializer": "^2.1.23",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "three": "^0.185.0"
+    "@jscad/modeling": "2.13.0",
+    "@jscad/stl-serializer": "2.1.23",
+    "@phosphor-icons/react": "^2.1.10",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "three": "0.185.0"
   },
   "build": {
     "appId": "com.xreality.convert",
     "productName": "Xreality Convert",
     "icon": "build/icon.icns",
     "asarUnpack": [
+      "engine/*.py",
       "engine/server.py",
-      "engine/job_queue.py",
-      "engine/job_logging.py",
-      "engine/generation_policy.py",
-      "engine/material_policy.py",
-      "engine/texture_quality.py",
-      "engine/geometry_delivery.py",
-      "engine/storage.py",
-      "engine/pipeline_states.py",
-      "engine/pipeline_states.json",
+      "engine/setup.sh",
       "engine/paint_service.py",
+      "engine/agentic_paint_service.py",
       "engine/pbr_glb.py",
-      "engine/patches/**/*",
+      "engine/material_policy.py",
+      "engine/asset_director.py",
+      "engine/buffalo_strategy.py",
+      "engine/openusd_export.py",
+      "engine/reference_projection.py",
+      "engine/m5_optimizer.py",
+      "engine/requirements-macos.lock",
+      "benchmarks/model-arena/run_agenticvibes_paint.py",
+      "engine/Hunyuan3D-2.1-mlx/hy3dshape/hy3dshape/**/*",
       "engine/Hunyuan3D-2.1-mlx/hy3dpaint/**/*",
-      "engine/setup.sh"
+      "engine/Hunyuan3D-2-official/hy3dgen/**/*",
+      "engine/AgenticVibes-Hunyuan3D-Paint/hy3dpaint/**/*"
     ],
     "files": [
+      "engine/*.py",
       "build/**/*",
       "electron/**/*",
       "skills/**/*",
@@ -76,7 +85,58 @@
       "engine/patches/**/*",
       "engine/Hunyuan3D-2.1-mlx/hy3dpaint/**/*",
       "engine/setup.sh",
-      "dist/**/*"
+      "engine/paint_service.py",
+      "engine/agentic_paint_service.py",
+      "engine/pbr_glb.py",
+      "engine/material_policy.py",
+      "engine/asset_director.py",
+      "engine/buffalo_strategy.py",
+      "engine/openusd_export.py",
+      "engine/reference_projection.py",
+      "engine/m5_optimizer.py",
+      "engine/requirements-macos.lock",
+      "benchmarks/model-arena/run_agenticvibes_paint.py",
+      "engine/Hunyuan3D-2.1-mlx/hy3dshape/hy3dshape/**/*",
+      "!engine/Hunyuan3D-2.1-mlx/hy3dshape/hy3dshape/**/__pycache__/**/*",
+      "!engine/Hunyuan3D-2.1-mlx/hy3dshape/hy3dshape/**/*.pyc",
+      "engine/Hunyuan3D-2.1-mlx/hy3dpaint/**/*",
+      "!engine/Hunyuan3D-2.1-mlx/hy3dpaint/**/__pycache__/**/*",
+      "!engine/Hunyuan3D-2.1-mlx/hy3dpaint/**/*.pyc",
+      "engine/Hunyuan3D-2-official/hy3dgen/**/*",
+      "!engine/Hunyuan3D-2-official/**/__pycache__/**/*",
+      "!engine/Hunyuan3D-2-official/**/*.pyc",
+      "engine/AgenticVibes-Hunyuan3D-Paint/hy3dpaint/**/*",
+      "!engine/AgenticVibes-Hunyuan3D-Paint/hy3dpaint/**/__pycache__/**/*",
+      "!engine/AgenticVibes-Hunyuan3D-Paint/hy3dpaint/**/*.pyc",
+      "!engine/AgenticVibes-Hunyuan3D-Paint/hy3dpaint/custom_rasterizer/build/**/*",
+      "dist/**/*",
+      "THIRD_PARTY_NOTICES.txt"
+    ],
+    "extraResources": [
+      {
+        "from": "engine/Hunyuan3D-2.1-mlx/LICENSE",
+        "to": "legal/Hunyuan3D-2.1-LICENSE.txt"
+      },
+      {
+        "from": "engine/Hunyuan3D-2.1-mlx/Notice.txt",
+        "to": "legal/Hunyuan3D-2.1-NOTICE.txt"
+      },
+      {
+        "from": "engine/AgenticVibes-Hunyuan3D-Paint/LICENSE",
+        "to": "legal/AgenticVibes-Hunyuan3D-Paint-LICENSE.txt"
+      },
+      {
+        "from": "engine/AgenticVibes-Hunyuan3D-Paint/LICENSE-MIT",
+        "to": "legal/AgenticVibes-Hunyuan3D-Paint-LICENSE-MIT.txt"
+      },
+      {
+        "from": "engine/AgenticVibes-Hunyuan3D-Paint/NOTICE",
+        "to": "legal/AgenticVibes-Hunyuan3D-Paint-NOTICE.txt"
+      },
+      {
+        "from": "THIRD_PARTY_NOTICES.txt",
+        "to": "legal/THIRD_PARTY_NOTICES.txt"
+      }
     ],
     "directories": {
       "output": "release"

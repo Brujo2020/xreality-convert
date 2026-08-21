@@ -1,10 +1,44 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import {
+  ArrowRight,
+  Armchair,
+  Boat,
+  Buildings,
+  Bus,
+  Car,
+  Crane,
+  Cube,
+  CubeFocus,
+  Drone,
+  Engine,
+  Factory,
+  Image as ImageIcon,
+  Package,
+  PawPrint,
+  Person,
+  Plus,
+  Polygon,
+  Scan,
+  SlidersHorizontal,
+  Sparkle,
+  SpinnerGap,
+  Lightning,
+  Motorcycle,
+  SolarPanel,
+  Tractor,
+  Tree,
+  Truck,
+  Warehouse,
+  Wrench,
+  MagicWand,
+  Gear,
+} from '@phosphor-icons/react';
 import XrProductionPanel from './XrProductionPanel.jsx';
 import UseCasePicker from './UseCasePicker.jsx';
+import TextureLibraryPicker from './TextureLibraryPicker.jsx';
 import { MODEL_CATEGORIES } from '../lib/modelCategories.js';
 import { XR_PROFILES } from '../lib/xrProfiles.js';
-import { getControlStatus } from '../lib/uiStatus.js';
-import { applyLowPolySkill, restoreCategoryDelivery } from '../lib/lowPolySkill.js';
+import { sounds } from '../lib/soundEffects.js';
 
 const CONTROL_BADGES = {
   recommended: ['Recomendado', 'border-cyan-300/15 bg-cyan-300/5 text-cyan-200'],
@@ -32,37 +66,116 @@ function ResetButton({ children = 'Restaurar', disabled, onClick }) {
 function Slider({ label, value, min, max, step, onChange, suffix = '', status }) {
   return (
     <label className="block">
-      <span className="mb-2 flex items-center justify-between text-[11px] text-slate-400">
-        <span className="flex items-center gap-2">{label}{status && <ControlBadge status={status} />}</span>
-        <b className="rounded-md border border-sky-400/15 bg-sky-400/5 px-2 py-0.5 font-mono font-medium text-sky-100">{value}{suffix}</b>
+      <span className="mb-2 flex items-center justify-between text-xs font-semibold text-slate-300">
+        {label}
+        <b className="rounded-lg border border-sky-400/25 bg-sky-400/10 px-2.5 py-1 font-mono text-xs font-bold text-sky-200 shadow-sm">
+          {value}{suffix}
+        </b>
       </span>
-      <input type="range" className="slider-accent w-full" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} />
+      <input type="range" className="slider-accent w-full h-2 rounded-lg cursor-pointer" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} />
     </label>
   );
 }
 
 const MODES = [
-  { id: 'image', step: '01', label: 'Crear imagen', hint: 'Referencia visual' },
-  { id: 'stl', step: '02', label: 'Texto → 3D', hint: 'FLUX + Hunyuan3D' },
-  { id: 'image3d', step: '03', label: 'Imagen → 3D', hint: 'Reconstrucción MLX' },
+  { id: 'image', step: '01', label: 'Crear Imagen', hint: 'Referencia visual FLUX', Icon: ImageIcon },
+  { id: 'stl', step: '02', label: 'Texto → 3D STL', hint: 'Geometría CAD técnica', Icon: Polygon },
+  { id: 'image3d', step: '03', label: 'Imagen → 3D', hint: 'Reconstrucción MLX', Icon: CubeFocus },
+];
+
+const CATEGORY_ICONS = {
+  animal: PawPrint,
+  person: Person,
+  product: Package,
+  industrial: Factory,
+  construction: Buildings,
+  warehouse: Warehouse,
+  vehicle: Car,
+  cargo_vehicle: Truck,
+  truck: Truck,
+  crane: Crane,
+  electrical: Lightning,
+  vegetation: Tree,
+  building: Buildings,
+  tool: Wrench,
+  forklift: Tractor,
+  excavator: Tractor,
+  motorcycle: Motorcycle,
+  bus: Bus,
+  drone: Drone,
+  boat: Boat,
+  furniture: Armchair,
+  solar: SolarPanel,
+  architecture: Buildings,
+  custom: Cube,
+};
+
+// Technical CAD blueprint templates for instant parametric 3D (STL) generation
+const STL_CAD_TEMPLATES = [
+  {
+    name: '⚙️ Engranaje Recto',
+    prompt: 'Parametric mechanical spur gear with 24 teeth, 80mm outer diameter, 12mm thickness, central 15mm keyway bore and 4 weight reduction cutouts.',
+  },
+  {
+    name: '📦 Carcasa Electrónica',
+    prompt: 'Electronics enclosure box with rounded chamfered corners, internal PCB mounting bosses, snap-fit lid groove and cable entry cutout. Dimensions: 100x60x30mm.',
+  },
+  {
+    name: '🔩 Brida de Tubería',
+    prompt: 'Industrial high-pressure pipe flange with 6 bolt holes on a pitch circle, raised face gasket seal and central fluid passage bore of 40mm.',
+  },
+  {
+    name: '🛸 Soporte Drone',
+    prompt: 'Aerospace lightweight carbon-style drone motor mount with M3 mounting pattern, aerodynamic arm clamp and internal wiring relief.',
+  },
+  {
+    name: '🔧 Mango Ergonómico',
+    prompt: 'Ergonomic tool handle with textured grip finger grooves, contoured palm swell and solid 8mm hex tool drive socket.',
+  },
+];
+
+// High-fidelity prompt enhancers for Image Mode
+const IMAGE_PROMPT_ENHANCERS = [
+  {
+    name: '🌟 3D Studio',
+    suffix: ', clean isometric 3D asset, studio lighting, smooth bevels, white background, high geometric fidelity, octane render 8k',
+  },
+  {
+    name: '🤖 Mecha Sci-Fi',
+    suffix: ', futuristic high-tech mecha robot, metallic plating, carbon fiber accents, emissive cyan LED trim, solid neutral background, 3D game model',
+  },
+  {
+    name: '🧸 Mascota 3D',
+    suffix: ', stylized 3D character mascot, clean symmetrical T-pose, vibrant tactile materials, soft studio diffuse lighting, isolated on white',
+  },
+  {
+    name: '🏛️ Arquitectura',
+    suffix: ', miniature modern architectural pavilion, clean geometric facade, volumetric lighting, photorealistic scale model, neutral studio floor',
+  },
 ];
 
 function ModeSelector({ mode, setMode, disabled }) {
   return (
-    <nav className="grid grid-cols-3 gap-1.5 rounded-2xl border border-white/5 bg-black/20 p-1.5 shadow-inner">
+    <nav className="grid grid-cols-3 gap-2 rounded-2xl border border-sky-400/25 bg-[#020b1d]/90 p-1.5 shadow-xl backdrop-blur-2xl">
       {MODES.map((item) => (
         <button
           key={item.id}
           disabled={disabled}
-          onClick={() => setMode(item.id)}
-          className={`group relative overflow-hidden rounded-xl px-2 py-2.5 text-left transition-all duration-300 ${
+          onClick={() => {
+            sounds.playSwitch();
+            setMode(item.id);
+          }}
+          className={`group relative overflow-hidden rounded-xl px-3 py-3 text-center transition-all duration-300 ${
             mode === item.id
-              ? 'bg-gradient-to-br from-blue-500 to-sky-500 text-white shadow-[0_8px_30px_rgba(22,137,232,0.28)]'
-              : 'text-slate-400 hover:bg-white/5 hover:text-slate-100'
+              ? 'bg-gradient-to-r from-blue-600 via-blue-500 to-sky-500 text-white shadow-[0_8px_30px_rgba(37,99,235,0.55)] border border-sky-300/50 scale-[1.03]'
+              : 'text-slate-400 hover:bg-white/10 hover:text-slate-100'
           }`}
         >
-          <span className={`block font-mono text-[9px] ${mode === item.id ? 'text-white/65' : 'text-sky-500/60'}`}>{item.step}</span>
-          <span className="mt-0.5 block text-[11px] font-semibold leading-tight">{item.label}</span>
+          <span className="flex items-center justify-center gap-1.5">
+            <span className={`font-mono text-[10px] font-bold ${mode === item.id ? 'text-white/90' : 'text-sky-400/80'}`}>{item.step}</span>
+            <item.Icon size={18} weight="duotone" className={mode === item.id ? 'text-white' : 'text-sky-400'} aria-hidden="true" />
+          </span>
+          <span className="mt-1 block text-xs font-bold leading-tight">{item.label}</span>
         </button>
       ))}
     </nav>
@@ -71,13 +184,10 @@ function ModeSelector({ mode, setMode, disabled }) {
 
 function Section({ eyebrow, title, action, children }) {
   return (
-    <section className="glass-card rounded-2xl p-4">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-sky-400/70">{eyebrow}</p>
-          <h2 className="mt-1 text-sm font-semibold tracking-tight text-slate-100">{title}</h2>
-        </div>
-        {action}
+    <section className="glass-card rounded-3xl p-5 border border-sky-400/25 bg-[#06173a]/85 backdrop-blur-2xl shadow-xl">
+      <div className="mb-3.5">
+        <p className="font-mono text-xs uppercase tracking-[0.2em] font-extrabold text-cyan-300">{eyebrow}</p>
+        <h2 className="mt-1 text-base font-bold tracking-tight text-white font-outfit">{title}</h2>
       </div>
       {children}
     </section>
@@ -238,20 +348,32 @@ function CompactMissionControl({ mission }) {
 }
 
 function CategorySelector({ value, onChange, disabled }) {
-  const selected = MODEL_CATEGORIES[value];
+  const selected = MODEL_CATEGORIES[value] || MODEL_CATEGORIES.industrial;
   return (
     <Section eyebrow="Contexto del modelo" title="¿Qué aparece en la imagen?">
-      <div className="grid grid-cols-3 gap-1.5">
+      <div className="grid grid-cols-3 gap-2">
         {Object.entries(MODEL_CATEGORIES).map(([id, item]) => (
-          <button key={id} disabled={disabled} onClick={() => onChange(id)} className={`rounded-xl border px-2 py-2.5 text-center transition ${value === id ? 'border-cyan-300/40 bg-cyan-300/10 text-white shadow-[0_8px_20px_rgba(22,137,232,0.14)]' : 'border-white/5 bg-black/10 text-slate-500 hover:border-sky-300/20 hover:text-slate-200'}`}>
-            <span className="block text-sm text-sky-300">{item.icon}</span>
-            <span className="mt-1 block text-[9px] font-semibold">{item.label}</span>
+          <button
+            key={id}
+            disabled={disabled}
+            onClick={() => {
+              sounds.playClick();
+              onChange(id);
+            }}
+            className={`rounded-2xl border px-2.5 py-3 text-center transition-all duration-300 ${
+              value === id
+                ? 'border-sky-400/60 bg-sky-500/25 text-white shadow-[0_8px_25px_rgba(56,189,248,0.3)] scale-[1.03]'
+                : 'border-white/10 bg-black/30 text-slate-300 hover:border-sky-400/40 hover:text-white'
+            }`}
+          >
+            {React.createElement(CATEGORY_ICONS[id] || Cube, { size: 24, weight: 'duotone', className: 'mx-auto text-cyan-300', 'aria-hidden': true })}
+            <span className="mt-1.5 block text-[11px] font-bold">{item.label}</span>
           </button>
         ))}
       </div>
-      <div className="mt-2.5 rounded-xl border border-sky-300/10 bg-sky-300/[0.035] p-2.5">
-        <p className="text-[10px] leading-relaxed text-slate-300">{selected.description}</p>
-        <div className="mt-2 flex flex-wrap gap-1.5 font-mono text-[7px] uppercase tracking-wider text-sky-300/70">
+      <div className="mt-3.5 rounded-2xl border border-sky-400/25 bg-sky-500/15 p-3.5">
+        <p className="text-xs leading-relaxed text-slate-100 font-medium">{selected.description}</p>
+        <div className="mt-2.5 flex flex-wrap gap-2 font-mono text-[10px] font-bold uppercase tracking-wider text-cyan-200">
           <span>{selected.steps} pasos</span><span>·</span><span>{selected.octree}px</span><span>·</span><span>{Math.round(selected.targetFaces / 1000)}K caras</span><span>·</span><span>{selected.backgroundMode === 'keep' ? 'Escena completa' : 'Fondo automático'}</span>
         </div>
       </div>
@@ -259,72 +381,310 @@ function CategorySelector({ value, onChange, disabled }) {
   );
 }
 
-export default function PromptPanel(props) {
-  const {
-    connected, useCase, onSelectUseCase, modelCategory, onSelectModelCategory, mode, setMode, imageModel, imageModels, setImageModel,
-    configMode, setConfigMode, manualOverrides, onResetRecommendations, onResetRecommendationSection, personalPresets, onSavePersonalPreset, onApplyPersonalPreset, executionPlan, mission, deliveryEstimate,
-    imageModelAvailable, installingModel, onInstallImageModel, stlModels, stlModel, setStlModel, prompt, setPrompt,
-    params, setParams, image3dInput, onPickImage, onDropImage, steps3d, setSteps3d, guidance3d, setGuidance3d,
-    backgroundMode, setBackgroundMode, subjectPadding, setSubjectPadding, pivot, setPivot, pivotCustom, setPivotCustom, upAxis, setUpAxis, units, setUnits, asset,
-    setAsset, analysis, analysisLoading, hunyuanUp, hunyuanHealth, installingEngine, onInstallEngine, generating, progress,
-    onGenerate, onCancel, randomSeed,
-  } = props;
-  const [advanced, setAdvanced] = useState(false);
-  const [imageInfo, setImageInfo] = useState(null);
-  const [presetName, setPresetName] = useState('');
-  const update = (key, value) => setParams((current) => ({ ...current, [key]: value }));
-  const processing = generating || installingEngine || installingModel;
-  const blocked = mode === 'image3d'
-    ? !hunyuanUp || !image3dInput
-    : mode === 'stl'
-      ? !connected || !imageModelAvailable || !hunyuanUp
-      : !connected || !imageModelAvailable;
+const QUICK_DELIVERY_PROFILES = [
+  ['lowpoly', 'Low Poly', '15K · PBR opcional'],
+  ['vrready', 'VR Ready', '45K · PBR opcional'],
+  ['smart', 'Smart M', 'Memoria adaptativa'],
+];
 
-  const actionLabel = mode === 'image3d'
-    ? 'Construir activo 3D'
-    : mode === 'stl'
-    ? 'Generar malla 3D'
-    : 'Generar imagen';
-  const queue = hunyuanHealth?.queue;
-  const queueActive = Boolean(queue?.active_job_id);
-  const queuePending = Array.isArray(queue?.pending) ? queue.pending.length : 0;
-  const hunyuanDegraded = Boolean(hunyuanHealth?.degraded);
-  const hunyuanStatus = hunyuanDegraded ? 'Degradado' : hunyuanUp ? 'Disponible' : hunyuanHealth?.error ? 'Error' : 'Preparando';
-  const hunyuanDetail = hunyuanHealth?.error
-    ? String(hunyuanHealth.error).trim().split('\n').at(-1).slice(0, 120)
-    : queueActive
-      ? `${queuePending ? 'Activo + pendiente' : 'Job activo'}`
-      : hunyuanHealth?.model_loaded
-        ? 'Modelo en memoria'
-        : hunyuanHealth?.ready
-          ? 'Motor listo'
-          : 'Motor no instalado';
-  const overrideCount = manualOverrides?.size || 0;
-  const hasOverride = (key) => manualOverrides?.has?.(key);
-  const hasAnyOverride = (keys) => keys.some((key) => hasOverride(key));
-  const expertMode = configMode === 'expert';
-  const savePreset = () => {
-    if (onSavePersonalPreset(presetName)) setPresetName('');
+function QuickDeliverySelector({ asset, setAsset, setSteps3d, disabled }) {
+  const selectProfile = (id) => {
+    sounds.playClick();
+    const profile = XR_PROFILES[id];
+    setAsset((current) => ({
+      ...current,
+      profile: id,
+      octree: profile.octree,
+      targetFaces: profile.targetFaces,
+      texture: current.texture === true,
+      textureSize: current.textureSize || profile.textureSize,
+      paintBackend: profile.paintBackend,
+    }));
+    setSteps3d(profile.steps);
   };
-  const categoryDefaults = MODEL_CATEGORIES[modelCategory];
-  const backgroundStatus = getControlStatus(backgroundMode, categoryDefaults.backgroundMode);
-  const stepsStatus = getControlStatus(steps3d, categoryDefaults.steps, { min: 10, max: 60 });
-  const guidanceStatus = getControlStatus(guidance3d, categoryDefaults.guidance, { min: 1, max: 12, tolerance: 0.01 });
-  const paddingStatus = getControlStatus(subjectPadding, categoryDefaults.padding, { min: 0.02, max: 0.4, tolerance: 0.001 });
-  const facesStatus = getControlStatus(asset.targetFaces, categoryDefaults.targetFaces, { min: 1000, max: 500000 });
 
   return (
-    <div className="scroll-dark flex h-full flex-col gap-3 overflow-y-auto px-3 pb-4 pt-3 xl:gap-4 xl:px-4 xl:pb-5 xl:pt-4">
-      <div className="px-1">
-        <div className="mb-3 flex items-center justify-between">
-          <div>
-            <p className="font-mono text-[9px] uppercase tracking-[0.22em] text-sky-400">Pipeline creativo</p>
-            <h1 className="mt-1 text-lg font-semibold tracking-tight text-white">Crear. Convertir. Entregar.</h1>
-          </div>
-          <span className="h-2 w-2 rounded-full bg-cyan-400 shadow-[0_0_18px_#52d7ff]" />
+    <section className="glass-card rounded-3xl border-sky-400/20 p-3.5 shadow-[0_15px_40px_rgba(1,10,30,0.4)]">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div>
+          <p className="font-mono text-[8px] uppercase tracking-[0.2em] font-extrabold text-cyan-300">Salida rápida</p>
+          <p className="mt-0.5 text-[11px] font-bold text-white">Elige la optimización</p>
         </div>
-        <ModeSelector mode={mode} setMode={setMode} disabled={processing} />
+        <span className="rounded-full border border-sky-400/30 bg-sky-500/15 px-2.5 py-0.5 font-mono text-[8px] font-extrabold uppercase text-cyan-200">{asset.profile}</span>
       </div>
+      <div className="grid grid-cols-3 gap-1.5">
+        {QUICK_DELIVERY_PROFILES.map(([id, label, hint]) => (
+          <button
+            key={id}
+            type="button"
+            data-profile-id={id}
+            aria-pressed={asset.profile === id}
+            disabled={disabled}
+            onClick={() => selectProfile(id)}
+            className={`rounded-full px-2.5 py-2 text-center transition-all duration-300 ${asset.profile === id ? 'border border-sky-400/50 bg-gradient-to-r from-blue-600 to-sky-500 text-white shadow-[0_0_20px_rgba(37,99,235,0.4)] scale-[1.03]' : 'border border-white/10 bg-black/20 text-slate-400 hover:border-sky-400/30 hover:text-white'} disabled:cursor-not-allowed disabled:opacity-40`}
+          >
+            <span className="block text-[9.5px] font-bold">{label}</span>
+            <span className="mt-0.5 block text-[7px] leading-tight text-slate-400">{hint}</span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export default function PromptPanel({
+  connected,
+  engineProvider = 'local',
+  setEngineProvider,
+  meshyApiKey,
+  setMeshyApiKey,
+  meshyMode,
+  setMeshyMode,
+  meshyTopology,
+  setMeshyTopology,
+  meshyTargetPolycount,
+  setMeshyTargetPolycount,
+  meshyPreviewTaskId,
+  meshyAiModel,
+  setMeshyAiModel,
+  meshyUltraMode,
+  setMeshyUltraMode,
+  meshyTextureResolution,
+  setMeshyTextureResolution,
+  meshyShouldTexture,
+  setMeshyShouldTexture,
+  useCase,
+  onSelectUseCase,
+  modelCategory,
+  onSelectModelCategory,
+  mode,
+  setMode,
+  imageModel,
+  imageModels,
+  setImageModel,
+  imageModelAvailable,
+  installingModel,
+  onInstallImageModel,
+  stlModels,
+  stlModel,
+  setStlModel,
+  prompt,
+  setPrompt,
+  params,
+  setParams,
+  image3dInput,
+  multiViewInputs,
+  multiViewBackend,
+  onPickImage,
+  onPickMultiView,
+  onDropImage,
+  steps3d,
+  setSteps3d,
+  guidance3d,
+  setGuidance3d,
+  backgroundMode,
+  setBackgroundMode,
+  subjectPadding,
+  setSubjectPadding,
+  stlMm,
+  setStlMm,
+  analysis,
+  analysisLoading,
+  asset,
+  setAsset,
+  hunyuanUp,
+  installingEngine,
+  onInstallEngine,
+  generating,
+  progress,
+  onGenerate,
+  onCancel,
+  randomSeed,
+}) {
+  const [advanced, setAdvanced] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [showAnalysis, setShowAnalysis] = useState(false);
+  const [imageInfo, setImageInfo] = useState(null);
+  const isMeshy = engineProvider === 'meshy';
+  const processing = generating || installingEngine || installingModel;
+
+  useEffect(() => {
+    if (!image3dInput?.base64) {
+      setImageInfo(null);
+      return;
+    }
+    const img = new window.Image();
+    img.src = `data:image/png;base64,${image3dInput.base64}`;
+    img.onload = () => {
+      setImageInfo({ width: img.naturalWidth, height: img.naturalHeight });
+    };
+  }, [image3dInput?.base64]);
+
+  const update = (key, value) => setParams((current) => ({ ...current, [key]: value }));
+
+  const blocked = isMeshy
+    ? !meshyApiKey || (!image3dInput && !prompt.trim())
+    : mode === 'image3d'
+    ? !image3dInput || !hunyuanUp
+    : mode === 'stl'
+    ? !prompt.trim() || !stlModel
+    : !prompt.trim() || !imageModelAvailable;
+
+  const getDynamicCreditCost = () => {
+    if (mode === 'image3d') {
+      let base = 5;
+      if (meshyUltraMode) base += 5;
+      return `${base}cr`;
+    }
+    if (meshyMode === 'refine') {
+      return '20cr';
+    }
+    let base = 5;
+    if (meshyUltraMode && (meshyAiModel === 'latest' || meshyAiModel === 'meshy-7')) {
+      base += 5;
+    }
+    return `${base}cr`;
+  };
+
+  const actionLabel = isMeshy
+    ? mode === 'image'
+      ? '🎨 Generar Referencia 2D (FLUX)'
+      : mode === 'stl'
+      ? `⚡ Generar Modelo 3D Texto → Meshy (${getDynamicCreditCost()})`
+      : `⚡ Reconstruir Modelo 3D Imagen → Meshy (${getDynamicCreditCost()})`
+    : mode === 'image3d'
+    ? 'Convertir imagen a 3D'
+    : mode === 'stl'
+    ? 'Generar código y malla'
+    : 'Generar imagen de referencia';
+
+  return (
+    <div className="flex h-full flex-col gap-4 overflow-y-auto p-4 select-none scroll-dark">
+      {/* Selector de Motor: Local MLX vs Meshy Cloud API */}
+      <Section eyebrow="Motor 3D" title="Proveedor de Procesamiento">
+        <div className="grid grid-cols-2 gap-1.5 rounded-full border border-sky-400/20 bg-[#020b1d]/80 p-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              sounds.playSwitch();
+              setEngineProvider('local');
+            }}
+            className={`rounded-full px-3 py-2 text-center transition-all duration-300 ${!isMeshy ? 'bg-gradient-to-r from-blue-600 to-sky-500 text-white shadow-[0_0_20px_rgba(37,99,235,0.5)] border border-sky-300/40 font-bold scale-[1.02]' : 'text-slate-400 hover:text-slate-200'}`}
+          >
+            <span className="block text-[11px]">🖥️ Local (Hunyuan MLX)</span>
+            <span className="block font-mono text-[8px] text-sky-300 font-bold">Privado · Coste $0</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              sounds.playSwitch();
+              setEngineProvider('meshy');
+            }}
+            className={`rounded-full px-3 py-2 text-center transition-all duration-300 ${isMeshy ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-sky-500 text-white shadow-[0_0_20px_rgba(37,99,235,0.5)] border border-sky-300/40 font-bold scale-[1.02]' : 'text-slate-400 hover:text-slate-200'}`}
+          >
+            <span className="block text-[11px]">☁️ Meshy Cloud API</span>
+            <span className="block font-mono text-[8px] text-indigo-300 font-bold">v7 · Quad Low-Poly</span>
+          </button>
+        </div>
+      </Section>
+
+      {/* Tarjeta de Configuración Meshy API */}
+      {isMeshy && (
+        <Section eyebrow="Meshy API Cloud Config" title="Parámetros y Clave de API">
+          <div className="flex flex-col gap-3">
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-[10px] font-bold text-slate-300">Meshy API Key</label>
+                <span className={`font-mono text-[9px] ${meshyApiKey ? 'text-emerald-300 font-extrabold' : 'text-amber-300 font-bold'}`}>
+                  {meshyApiKey ? '✓ Guardada' : '⚠️ Clave requerida'}
+                </span>
+              </div>
+              <div className="flex gap-1.5">
+                <input
+                  type={showApiKey ? 'text' : 'password'}
+                  placeholder="msy_..."
+                  value={meshyApiKey}
+                  onChange={(e) => setMeshyApiKey(e.target.value)}
+                  className="field-modern min-w-0 flex-1 font-mono text-xs"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowApiKey((v) => !v)}
+                  className="rounded-full border border-sky-400/20 bg-white/10 px-3 text-[10px] text-slate-300 hover:bg-white/20 transition-all"
+                >
+                  {showApiKey ? '🙈' : '👁️'}
+                </button>
+              </div>
+            </div>
+
+            {/* Modo de Generación Meshy */}
+            <div>
+              <label className="mb-1.5 block text-[10px] font-bold text-slate-300">Modo de Operación Meshy Cloud</label>
+              <div className="grid grid-cols-2 gap-1.5 rounded-2xl border border-sky-400/20 bg-black/40 p-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    sounds.playClick();
+                    setMeshyMode('preview');
+                  }}
+                  className={`rounded-xl px-2.5 py-1.5 text-center transition-all ${
+                    meshyMode === 'preview'
+                      ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold shadow-[0_0_15px_rgba(16,185,129,0.4)]'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <span className="block text-[10px]">⚡ Preview Rápido</span>
+                  <span className="block font-mono text-[8px] text-emerald-200">5 Créditos · Shape Económico</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    sounds.playClick();
+                    setMeshyMode('refine');
+                  }}
+                  className={`rounded-xl px-2.5 py-1.5 text-center transition-all ${
+                    meshyMode === 'refine'
+                      ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white font-bold shadow-[0_0_15px_rgba(245,158,11,0.4)]'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <span className="block text-[10px]">💎 Refinado HD</span>
+                  <span className="block font-mono text-[8px] text-amber-200">20 Créditos · Textura PBR</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Topology & Polycount */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="mb-1 block text-[10px] font-bold text-slate-300">Topología</label>
+                <select
+                  value={meshyTopology}
+                  onChange={(e) => setMeshyTopology(e.target.value)}
+                  className="field-modern w-full text-xs"
+                >
+                  <option value="quad">Quad (Clean Low-Poly)</option>
+                  <option value="triangle">Triangle (Decimado)</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] font-bold text-slate-300">Target Polycount</label>
+                <select
+                  value={meshyTargetPolycount}
+                  onChange={(e) => setMeshyTargetPolycount(Number(e.target.value))}
+                  className="field-modern w-full text-xs font-mono"
+                >
+                  <option value={5000}>5.000 (Low Poly VR)</option>
+                  <option value={12000}>12.000 (Juegos Std)</option>
+                  <option value={30000}>30.000 (Hero Asset)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </Section>
+      )}
+
+      <ModeSelector mode={mode} setMode={setMode} disabled={processing} />
 
       <UseCasePicker value={useCase} onChange={onSelectUseCase} disabled={processing} />
       <ConfigModeSelector value={configMode} onChange={setConfigMode} disabled={processing} />
@@ -352,237 +712,160 @@ export default function PromptPanel(props) {
       <PipelinePlan steps={executionPlan || []} />
       <CompactMissionControl mission={mission} />
 
-      <Section eyebrow="Fuente" title={mode === 'image3d' ? 'Motor de reconstrucción' : mode === 'image' ? 'Modelo generativo' : 'Pipeline de modelado'}>
-        {mode === 'image' && (
-          <>
-            <select value={imageModel} onChange={(event) => setImageModel(event.target.value)} className="field-modern" disabled={processing}>
-              <option value={imageModel}>{imageModelAvailable ? imageModel : `${imageModel} · no instalado`}</option>
-              {imageModels.filter((model) => model !== imageModel).map((model) => <option key={model} value={model}>{model}</option>)}
-            </select>
-            {!imageModelAvailable && <div className="mt-2 rounded-xl border border-amber-400/20 bg-amber-400/5 p-2.5"><p className="text-[10px] leading-relaxed text-amber-100">Este flujo necesita un modelo visual local.</p><button onClick={onInstallImageModel} disabled={installingModel} className="mt-2 w-full rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white">{installingModel ? 'Instalando FLUX…' : 'Instalar FLUX.2 Klein'}</button></div>}
-          </>
-        )}
-        {mode === 'stl' && (
-          <div className="space-y-2">
-            <div className="rounded-xl border border-white/5 bg-black/15 px-3 py-2.5">
-              <span className="font-mono text-[8px] uppercase tracking-wider text-slate-500">Director de referencia</span>
-              <strong className="mt-1 block text-xs text-slate-100">{imageModel}</strong>
-            </div>
-            <div className={`rounded-xl border px-3 py-2.5 ${hunyuanUp ? 'border-cyan-400/20 bg-cyan-400/5' : 'border-amber-400/20 bg-amber-400/5'}`}>
-              <span className="font-mono text-[8px] uppercase tracking-wider text-slate-500">Geometría real</span>
-              <strong className="mt-1 block text-xs text-slate-100">Hunyuan3D 2.1 · Apple MLX</strong>
-            </div>
-            {!hunyuanUp && !installingEngine && <button onClick={onInstallEngine} className="w-full rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white">Inicializar motor 3D</button>}
-          </div>
-        )}
-        {mode === 'image3d' && (
-          <div className={`rounded-xl border p-3 ${hunyuanDegraded ? 'border-amber-400/25 bg-amber-400/5' : hunyuanUp ? 'border-cyan-400/20 bg-cyan-400/5' : 'border-amber-400/20 bg-amber-400/5'}`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className={`h-2.5 w-2.5 rounded-full ${hunyuanDegraded ? 'bg-amber-400' : hunyuanUp ? 'bg-cyan-400 shadow-[0_0_14px_#52d7ff]' : 'bg-amber-400'}`} />
-                <span className="text-xs font-medium text-slate-100">Hunyuan3D · Apple MLX</span>
-              </div>
-              <span className="font-mono text-[9px] uppercase tracking-wider text-slate-400">{hunyuanStatus}</span>
-            </div>
-            <div className="mt-2 flex items-center justify-between gap-2 font-mono text-[8px] uppercase tracking-wider text-slate-500">
-              <span>{hunyuanDetail}</span>
-              {queueActive && <span>{queuePending}/{queue?.max_pending || 1} en cola</span>}
-            </div>
-            {!hunyuanUp && !installingEngine && <button onClick={onInstallEngine} className="mt-3 w-full rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-blue-900/30">Inicializar motor</button>}
-          </div>
-        )}
-      </Section>
+      {!isMeshy && (mode === 'image3d' || mode === 'stl') && (
+        <div className="sticky top-0 z-20 rounded-3xl bg-[#030d20]/95 py-1 backdrop-blur-xl">
+          <QuickDeliverySelector asset={asset} setAsset={setAsset} setSteps3d={setSteps3d} disabled={processing} />
+        </div>
+      )}
 
-      <Section eyebrow="Entrada" title={mode === 'image3d' ? 'Referencia del objeto' : 'Dirección creativa'}>
+      {/* Direction & Input Section */}
+      <Section eyebrow="Entrada" title={mode === 'image3d' ? 'Referencia del objeto' : mode === 'stl' ? 'Especificación Técnica CAD' : 'Dirección creativa'}>
         {mode === 'image3d' ? (
-          <button onClick={onPickImage} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); onDropImage(event.dataTransfer.files[0]); }} disabled={processing} className="group relative flex min-h-36 w-full flex-col items-center justify-center overflow-hidden rounded-2xl border border-dashed border-sky-400/25 bg-gradient-to-br from-sky-400/5 to-transparent p-3 transition hover:border-sky-300/60 hover:bg-sky-400/10 disabled:opacity-50">
+          <button
+            onClick={() => {
+              sounds.playClick();
+              onPickImage();
+            }}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => {
+              event.preventDefault();
+              onDropImage(event.dataTransfer.files[0]);
+            }}
+            disabled={processing}
+            className="group relative flex min-h-36 w-full flex-col items-center justify-center overflow-hidden rounded-3xl border-2 border-dashed border-sky-400/35 bg-gradient-to-br from-sky-500/10 via-blue-600/5 to-transparent p-4 transition-all duration-300 hover:border-sky-300 hover:bg-sky-400/15 disabled:opacity-50"
+          >
             {image3dInput ? (
               <>
-                <img src={image3dInput.dataUrl} alt="Referencia 3D" onLoad={(event) => setImageInfo({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })} className="max-h-36 rounded-xl object-contain shadow-2xl" />
-                <span className="mt-2 max-w-full truncate text-[10px] text-slate-400">{image3dInput.name} · cambiar</span>
+                <img src={image3dInput.dataUrl} alt="Referencia 3D" onLoad={(event) => setImageInfo({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })} className="max-h-36 rounded-2xl object-contain shadow-2xl" />
+                <span className="mt-2 max-w-full truncate text-[10px] font-semibold text-slate-300">{image3dInput.name} · cambiar</span>
               </>
             ) : (
               <>
-                <span className="grid h-12 w-12 place-items-center rounded-full border border-sky-400/20 bg-sky-400/10 text-2xl text-sky-300 shadow-[0_0_30px_rgba(82,215,255,0.12)]">＋</span>
-                <span className="mt-3 text-xs font-semibold text-slate-200">Seleccionar o arrastrar imagen</span>
-                <span className="mt-1 text-[10px] text-slate-500">PNG · JPG · WEBP</span>
+                <span className="grid h-12 w-12 place-items-center rounded-full border border-sky-400/40 bg-sky-400/20 text-sky-200 shadow-[0_0_30px_rgba(56,189,248,0.3)] transition duration-300 group-hover:scale-110"><Plus size={24} weight="duotone" aria-hidden="true" /></span>
+                <span className="mt-3 text-xs font-bold text-slate-100">Seleccionar o arrastrar imagen</span>
+                <span className="mt-1 text-[10px] font-medium text-slate-400">PNG · JPG · WEBP</span>
               </>
             )}
           </button>
         ) : (
-          <textarea
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            rows={5}
-            disabled={processing}
-            placeholder={mode === 'stl' ? 'Describe una pieza, equipo o activo industrial…' : 'Describe una referencia limpia, centrada y lista para convertir…'}
-            className="field-modern scroll-dark resize-none leading-relaxed"
-          />
-        )}
-        {mode === 'image3d' && imageInfo && (
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            <span className="rounded-md border border-white/5 bg-black/15 px-2 py-1 font-mono text-[8px] text-slate-400">{imageInfo.width}×{imageInfo.height}</span>
-            <span className={`rounded-md border px-2 py-1 font-mono text-[8px] ${Math.min(imageInfo.width, imageInfo.height) >= 768 ? 'border-cyan-300/15 bg-cyan-300/5 text-cyan-200' : 'border-amber-300/15 bg-amber-300/5 text-amber-200'}`}>{Math.min(imageInfo.width, imageInfo.height) >= 768 ? 'Resolución correcta' : 'Resolución baja'}</span>
-            <span className={`rounded-md border px-2 py-1 font-mono text-[8px] ${Math.max(imageInfo.width, imageInfo.height) / Math.min(imageInfo.width, imageInfo.height) <= 1.4 ? 'border-cyan-300/15 bg-cyan-300/5 text-cyan-200' : 'border-amber-300/15 bg-amber-300/5 text-amber-200'}`}>{Math.max(imageInfo.width, imageInfo.height) / Math.min(imageInfo.width, imageInfo.height) <= 1.4 ? 'Encuadre óptimo' : 'Conviene recortar'}</span>
-          </div>
-        )}
-        {mode === 'image3d' && (
-          <div className="mt-3 rounded-2xl border border-white/5 bg-black/15 p-3">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <p className="font-mono text-[9px] uppercase tracking-[0.18em] text-sky-400/70">Diagnóstico previo</p>
-                <p className="mt-1 text-[10px] text-slate-400">
-                  {analysisLoading ? 'Analizando la imagen…' : analysis?.status || 'Esperando una referencia'}
-                </p>
-              </div>
-              {analysis?.suggested_category && analysis?.suggested_category !== modelCategory && (
-                <button
-                  disabled={processing}
-                  onClick={() => onSelectModelCategory(analysis.suggested_category)}
-                  className="rounded-lg border border-cyan-300/20 bg-cyan-300/5 px-2.5 py-1.5 text-[9px] font-semibold text-cyan-100 transition hover:bg-cyan-300/10"
-                >
-                  Aplicar {MODEL_CATEGORIES[analysis.suggested_category]?.label || 'categoría sugerida'}
-                </button>
-              )}
-            </div>
-            {analysis?.preview_base64 && image3dInput && (
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                <figure className="rounded-xl border border-white/5 bg-black/20 p-2">
-                  <figcaption className="mb-2 font-mono text-[8px] uppercase tracking-[0.16em] text-slate-500">Original</figcaption>
-                  <img src={image3dInput.dataUrl} alt="Referencia original" className="h-28 w-full rounded-lg object-contain" />
-                </figure>
-                <figure className="rounded-xl border border-white/5 bg-black/20 p-2">
-                  <figcaption className="mb-2 font-mono text-[8px] uppercase tracking-[0.16em] text-slate-500">Máscara</figcaption>
-                  <img src={`data:image/png;base64,${analysis.mask_base64 || analysis.preview_base64}`} alt="Máscara de sujeto" className="h-28 w-full rounded-lg object-contain" />
-                </figure>
-                <figure className="rounded-xl border border-cyan-300/15 bg-cyan-300/[0.04] p-2">
-                  <figcaption className="mb-2 font-mono text-[8px] uppercase tracking-[0.16em] text-cyan-200/70">Preparada</figcaption>
-                  <img src={`data:image/png;base64,${analysis.preview_base64}`} alt="Referencia preparada" className="h-28 w-full rounded-lg object-contain" />
-                </figure>
-              </div>
-            )}
-            {analysis && (
-              <div className="mt-3 space-y-2">
-                <div className="flex flex-wrap gap-1.5">
-                  <span className={`rounded-md border px-2 py-1 font-mono text-[8px] ${analysis.status === 'Óptima' ? 'border-cyan-300/15 bg-cyan-300/5 text-cyan-200' : analysis.status === 'Procesable con ajustes' ? 'border-amber-300/15 bg-amber-300/5 text-amber-200' : 'border-rose-300/15 bg-rose-300/5 text-rose-200'}`}>{analysis.status}</span>
-                  {analysis.orientation && <span className="rounded-md border border-white/5 bg-black/15 px-2 py-1 font-mono text-[8px] text-slate-400">{analysis.orientation}</span>}
-                  {analysis.subject_components != null && <span className="rounded-md border border-white/5 bg-black/15 px-2 py-1 font-mono text-[8px] text-slate-400">{analysis.subject_components} componentes</span>}
-                  {analysis.has_alpha && <span className="rounded-md border border-cyan-300/15 bg-cyan-300/5 px-2 py-1 font-mono text-[8px] text-cyan-200">Transparencia detectada</span>}
-                </div>
-                {analysis.actions?.length ? (
-                  <ul className="space-y-1 text-[10px] leading-relaxed text-slate-400">
-                    {analysis.actions.slice(0, 3).map((action) => (
-                      <li key={action} className="flex gap-2">
-                        <span className="mt-[6px] h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400/70" />
-                        <span>{action}</span>
-                      </li>
+          <>
+            {/* Quick Templates Bar */}
+            <div className="mb-3">
+              <span className="flex items-center gap-1.5 font-mono text-xs font-extrabold uppercase tracking-wider text-cyan-300 mb-2">
+                <MagicWand size={15} weight="duotone" />
+                {mode === 'stl' ? 'Plantillas CAD Rápidas' : 'Optimizadores de Prompt'}
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {mode === 'stl'
+                  ? STL_CAD_TEMPLATES.map((tmpl) => (
+                      <button
+                        key={tmpl.name}
+                        type="button"
+                        disabled={processing}
+                        onClick={() => {
+                          sounds.playClick();
+                          setPrompt(tmpl.prompt);
+                        }}
+                        className="rounded-full border border-sky-400/40 bg-sky-500/15 px-3.5 py-1.5 text-xs font-bold text-sky-100 hover:bg-sky-500/30 hover:scale-[1.03] transition-all shadow-sm"
+                      >
+                        {tmpl.name}
+                      </button>
+                    ))
+                  : IMAGE_PROMPT_ENHANCERS.map((enh) => (
+                      <button
+                        key={enh.name}
+                        type="button"
+                        disabled={processing}
+                        onClick={() => {
+                          sounds.playClick();
+                          setPrompt((prev) => (prev.includes(enh.suffix) ? prev : `${prev.trim()}${enh.suffix}`));
+                        }}
+                        className="rounded-full border border-sky-400/40 bg-sky-500/15 px-3.5 py-1.5 text-xs font-bold text-sky-100 hover:bg-sky-500/30 hover:scale-[1.03] transition-all shadow-sm"
+                      >
+                        + {enh.name}
+                      </button>
                     ))}
-                  </ul>
-                ) : null}
               </div>
-            )}
+            </div>
+
+            <div className="tui-prompt-hero p-3">
+              <textarea
+                value={prompt}
+                onChange={(event) => setPrompt(event.target.value)}
+                rows={4}
+                disabled={processing}
+                placeholder={mode === 'stl' ? 'Describe una pieza, mecanismo o carcasa técnica con dimensiones en mm…' : 'Describe una referencia limpia, centrada y lista para convertir a 3D…'}
+                className="w-full bg-transparent font-sans text-sm sm:text-base leading-relaxed text-white placeholder-slate-500 focus:outline-none resize-none scroll-dark"
+              />
+              <div className="flex items-center justify-between pt-2 border-t border-white/10 font-mono text-[11px] text-slate-400">
+                <span className="flex items-center gap-1">
+                  <span className={`h-2 w-2 rounded-full ${prompt.trim().length > 30 ? 'bg-emerald-400' : prompt.trim().length > 0 ? 'bg-amber-400' : 'bg-slate-600'}`} />
+                  {prompt.trim().length > 30 ? 'Prompt Óptimo' : prompt.trim().length > 0 ? 'Prompt Básico' : 'Esperando texto'}
+                </span>
+                <span>{prompt.length} caracteres</span>
+              </div>
+            </div>
+
+            <TextureLibraryPicker
+              disabled={processing}
+              onSelectTexture={(suffix) => {
+                sounds.playClick();
+                setPrompt((prev) => (prev.includes(suffix) ? prev : `${prev.trim()}${suffix}`));
+              }}
+            />
+          </>
+        )}
+
+        {/* Multi-view and Diagnosis in 3D Mode */}
+        {mode === 'image3d' && (
+          <div className="mt-4 rounded-2xl border border-sky-400/25 bg-sky-500/15 p-4">
+            <p className="font-mono text-xs uppercase tracking-[0.2em] font-bold text-cyan-200">Vistas para Shape Multi-Vista</p>
+            <p className="mt-1 text-xs leading-relaxed text-slate-200">Añade fotos reales etiquetadas para maximizar la fidelidad geométrica 360°.</p>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {['front', 'right', 'back', 'left', 'top', 'bottom'].map((viewId) => (
+                <button
+                  key={viewId}
+                  type="button"
+                  disabled={processing}
+                  onClick={() => {
+                    sounds.playClick();
+                    onPickMultiView?.(viewId);
+                  }}
+                  className={`rounded-xl border px-3 py-2 text-center font-mono text-xs font-bold uppercase transition-all ${
+                    multiViewInputs[viewId] ? 'border-emerald-400/50 bg-emerald-500/25 text-emerald-100 shadow-sm scale-[1.02]' : 'border-white/15 bg-black/30 text-slate-300 hover:border-sky-400/40 hover:text-white'
+                  }`}
+                >
+                  {multiViewInputs[viewId] ? `✓ ${viewId}` : `+ ${viewId}`}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </Section>
 
       <CategorySelector value={modelCategory} onChange={onSelectModelCategory} disabled={processing} />
 
-      {mode === 'image3d' && (
-        <Section
-          eyebrow="Preparación inteligente"
-          title="Fondo y sujeto"
-          action={hasAnyOverride(['background', 'padding']) && (
-            <ResetButton disabled={processing} onClick={() => onResetRecommendationSection('preparation')} />
-          )}
-        >
-          <div className="mb-2 flex justify-end"><ControlBadge status={backgroundStatus} /></div>
-          <div className="grid grid-cols-3 gap-1.5 rounded-xl border border-white/5 bg-black/15 p-1.5">
-            {[
-              ['auto', 'Automático', 'Recomendado'],
-              ['remove', 'Quitar', 'Objeto aislado'],
-              ['keep', 'Conservar', 'Escena completa'],
-            ].map(([id, label, hint]) => (
-              <button key={id} disabled={processing} onClick={() => setBackgroundMode(id)} className={`rounded-lg px-2 py-2 text-center transition ${backgroundMode === id ? 'bg-cyan-300/12 text-white ring-1 ring-cyan-300/35' : 'text-slate-500 hover:bg-white/5 hover:text-slate-200'}`}>
-                <span className="block text-[9px] font-semibold">{label}</span>
-                <span className="mt-0.5 block text-[7px] text-slate-500">{hint}</span>
-              </button>
-            ))}
-          </div>
-          <p className="mt-2.5 text-[9px] leading-relaxed text-slate-400">
-            {backgroundMode === 'auto' ? (modelCategory === 'architecture' ? 'El orquestador conservará el entorno porque forma parte del modelo.' : 'El orquestador aislará el sujeto y eliminará el fondo antes de reconstruir.') : backgroundMode === 'remove' ? 'Se forzará una silueta limpia, incluso si la imagen contiene entorno.' : 'La imagen completa entrará al motor sin recorte de fondo.'}
-          </p>
-        </Section>
-      )}
-
-      {mode === 'image3d' && (
-        <Section eyebrow="Estimación" title="Calidad, tiempo y memoria">
-          <div className="grid grid-cols-3 gap-2">
-            <div className="rounded-xl border border-white/5 bg-black/15 p-2">
-              <span className="font-mono text-[8px] uppercase tracking-wider text-slate-500">Calidad</span>
-              <strong className="mt-1 block text-xs text-slate-100">{deliveryEstimate?.quality || 'Pendiente'}</strong>
-            </div>
-            <div className="rounded-xl border border-white/5 bg-black/15 p-2">
-              <span className="font-mono text-[8px] uppercase tracking-wider text-slate-500">Tiempo</span>
-              <strong className="mt-1 block text-xs text-slate-100">≈ {deliveryEstimate?.minutes || 9} min</strong>
-            </div>
-            <div className="rounded-xl border border-white/5 bg-black/15 p-2">
-              <span className="font-mono text-[8px] uppercase tracking-wider text-slate-500">Memoria</span>
-              <strong className="mt-1 block text-xs text-slate-100">≈ {deliveryEstimate?.memoryGb || 13} GB</strong>
-            </div>
-          </div>
-          <div className={`mt-2 rounded-xl border px-3 py-2 ${asset.texture ? 'border-cyan-300/20 bg-cyan-300/5' : 'border-white/5 bg-black/15'}`}>
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[10px] font-medium text-slate-200">Textura PBR para paso final</span>
-              <span className="font-mono text-[8px] uppercase tracking-wider text-cyan-200">{asset.texture ? `${asset.textureSize} solicitada` : 'Sin textura'}</span>
-            </div>
-          </div>
-        </Section>
-      )}
-
       {(mode === 'image3d' || mode === 'stl') && (
-        <XrProductionPanel
-          asset={asset}
-          recommended={categoryDefaults}
-          setAsset={setAsset}
-          setSteps3d={setSteps3d}
-          disabled={processing}
-          onReset={hasAnyOverride(['asset', 'steps']) ? () => onResetRecommendationSection('asset') : null}
-        />
+        <XrProductionPanel asset={asset} setAsset={setAsset} setSteps3d={setSteps3d} disabled={processing} />
       )}
 
-      {mode === 'image3d' && (
-        <Section eyebrow="Presets personales" title="Guardar y reutilizar">
-          <div className="flex gap-2">
-            <input
-              value={presetName}
-              onChange={(event) => setPresetName(event.target.value)}
-              disabled={processing}
-              placeholder="Nombre del preset"
-              className="field-modern min-w-0 flex-1 !py-2 text-xs"
-            />
-            <button disabled={processing || !presetName.trim()} onClick={savePreset} className="rounded-xl border border-cyan-300/20 bg-cyan-300/5 px-3 text-[10px] font-semibold text-cyan-100 disabled:opacity-40">Guardar</button>
-          </div>
-          {personalPresets?.length ? (
-            <select disabled={processing} defaultValue="" onChange={(event) => { if (event.target.value) onApplyPersonalPreset(event.target.value); event.target.value = ''; }} className="field-modern mt-2 !py-2 text-xs">
-              <option value="">Aplicar preset guardado…</option>
-              {personalPresets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
-            </select>
-          ) : (
-            <p className="mt-2 text-[10px] text-slate-500">Sin presets guardados todavía.</p>
-          )}
-        </Section>
-      )}
-
-      {expertMode && <section className="overflow-hidden rounded-2xl border border-white/5 bg-black/10">
-        <button onClick={() => setAdvanced((current) => !current)} className="flex w-full items-center justify-between px-4 py-3 text-xs font-medium text-slate-300">
-          <span>Controles avanzados</span>
-          <span className={`text-sky-400 transition-transform ${advanced ? 'rotate-45' : ''}`}>＋</span>
+      {/* Advanced Parameters Accordion */}
+      <section className="overflow-hidden rounded-3xl border border-sky-500/20 bg-[#06173a]/75 backdrop-blur-2xl">
+        <button
+          onClick={() => {
+            sounds.playClick();
+            setAdvanced((current) => !current);
+          }}
+          className="flex w-full items-center justify-between px-4 py-3.5 text-xs font-bold text-slate-200"
+        >
+          <span className="flex items-center gap-2"><SlidersHorizontal size={17} weight="duotone" className="text-sky-400" aria-hidden="true" />Controles avanzados</span>
+          <Plus size={16} weight="duotone" className={`text-sky-400 transition-transform duration-300 ${advanced ? 'rotate-45' : ''}`} aria-hidden="true" />
         </button>
         {advanced && (
-          <div className="flex flex-col gap-4 border-t border-white/5 p-4">
+          <div className="flex flex-col gap-4 border-t border-sky-500/15 p-4.5">
             {mode === 'image' && (
               <>
-                <button onClick={() => setParams((current) => ({ ...current, width: 2048, height: 2048, steps: 20 }))} className="rounded-xl border border-sky-400/25 bg-sky-400/5 px-3 py-2.5 text-xs font-semibold text-sky-200 hover:bg-sky-400/10">◆ Aplicar máxima calidad</button>
+                <button onClick={() => setParams((current) => ({ ...current, width: 2048, height: 2048, steps: 20 }))} className="flex items-center justify-center gap-2 rounded-full border border-sky-400/30 bg-sky-500/15 px-4 py-2.5 text-xs font-bold text-sky-200 hover:bg-sky-500/25 transition-all"><Sparkle size={16} weight="duotone" aria-hidden="true" />Aplicar máxima calidad</button>
                 <Slider label="Ancho" value={params.width} min={512} max={2048} step={64} suffix=" px" onChange={(value) => update('width', value)} />
                 <Slider label="Alto" value={params.height} min={512} max={2048} step={64} suffix=" px" onChange={(value) => update('height', value)} />
                 <Slider label="Pasos" value={params.steps} min={1} max={20} step={1} onChange={(value) => update('steps', value)} />
@@ -635,90 +918,56 @@ export default function PromptPanel(props) {
             )}
             {mode === 'image3d' && (
               <>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-slate-500">Reconstrucción</span>
-                  {hasAnyOverride(['steps', 'guidance', 'asset']) && (
-                    <ResetButton disabled={processing} onClick={() => onResetRecommendationSection('reconstruction')} />
-                  )}
-                </div>
-                <Slider label="Pasos de reconstrucción" value={steps3d} min={10} max={50} step={5} status={stepsStatus} onChange={setSteps3d} />
-                <Slider label="Resolución de malla" value={asset.octree} min={96} max={256} step={32} status={getControlStatus(asset.octree, categoryDefaults.octree, { min: 96, max: 256 })} onChange={(value) => setAsset((current) => ({ ...current, octree: value }))} />
-                <Slider label="Fidelidad al sujeto" value={guidance3d} min={1} max={12} step={0.5} status={guidanceStatus} onChange={setGuidance3d} />
-                <Slider label="Margen alrededor" value={Math.round(subjectPadding * 100)} min={2} max={40} step={1} suffix="%" status={paddingStatus} onChange={(value) => setSubjectPadding(value / 100)} />
-                <Slider label="Presupuesto de caras" value={asset.targetFaces} min={10000} max={200000} step={5000} status={facesStatus} onChange={(value) => setAsset((current) => ({ ...current, targetFaces: value }))} />
-                <div className="flex items-center justify-between gap-2 border-t border-white/5 pt-3">
-                  <span className="font-mono text-[9px] uppercase tracking-[0.18em] text-slate-500">Entrega</span>
-                  {hasAnyOverride(['delivery', 'asset']) && (
-                    <ResetButton disabled={processing} onClick={() => onResetRecommendationSection('delivery')} />
-                  )}
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <label className="text-[9px] uppercase tracking-wider text-slate-500">
-                    Pivot
-                    <select value={pivot} onChange={(event) => setPivot(event.target.value)} className="field-modern mt-1.5 !py-2">
-                      <option value="center">Centro</option>
-                      <option value="base">Base</option>
-                      <option value="custom">Custom</option>
-                    </select>
-                  </label>
-                  <label className="text-[9px] uppercase tracking-wider text-slate-500">
-                    Eje up
-                    <select value={upAxis} onChange={(event) => setUpAxis(event.target.value)} className="field-modern mt-1.5 !py-2">
-                      <option value="y">Y-up</option>
-                      <option value="z">Z-up</option>
-                    </select>
-                  </label>
-                  <label className="text-[9px] uppercase tracking-wider text-slate-500">
-                    Unidad
-                    <select value={units} onChange={(event) => setUnits(event.target.value)} className="field-modern mt-1.5 !py-2">
-                      <option value="m">m</option>
-                      <option value="cm">cm</option>
-                      <option value="mm">mm</option>
-                    </select>
-                  </label>
-                </div>
-                {pivot === 'custom' && (
-                  <div className="grid grid-cols-3 gap-2">
-                    {['X', 'Y', 'Z'].map((axis, index) => (
-                      <label key={axis} className="text-[9px] uppercase tracking-wider text-slate-500">
-                        Pivot {axis}
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={pivotCustom[index]}
-                          onChange={(event) => setPivotCustom(index, Number(event.target.value) || 0)}
-                          className="field-modern mt-1.5 !py-2"
-                        />
-                      </label>
-                    ))}
-                  </div>
-                )}
-                <button onClick={onResetRecommendations} className="rounded-xl border border-sky-400/20 bg-sky-400/5 px-3 py-2.5 text-[10px] font-semibold text-sky-200 hover:bg-sky-400/10">Restaurar todo a {MODEL_CATEGORIES[modelCategory].label}</button>
+                <Slider label="Pasos de reconstrucción" value={steps3d} min={10} max={50} step={5} onChange={setSteps3d} />
+                <Slider label="Resolución de malla" value={asset.octree} min={96} max={256} step={32} onChange={(value) => setAsset((current) => ({ ...current, octree: value }))} />
+                <Slider label="Fidelidad al sujeto" value={guidance3d} min={1} max={12} step={0.5} onChange={setGuidance3d} />
+                <Slider label="Margen alrededor" value={Math.round(subjectPadding * 100)} min={2} max={40} step={1} suffix="%" onChange={(value) => setSubjectPadding(value / 100)} />
+                <Slider label="Presupuesto de caras" value={asset.targetFaces} min={10000} max={200000} step={5000} onChange={(value) => setAsset((current) => ({ ...current, targetFaces: value }))} />
               </>
-            )}
-            {mode !== 'image3d' && (
-              <label className="block text-[11px] text-slate-400">
-                Semilla reproducible
-                <div className="mt-2 flex gap-2">
-                  <input type="number" value={params.seed} onChange={(event) => update('seed', Number(event.target.value) || 0)} className="field-modern min-w-0 flex-1 font-mono" />
-                  <button onClick={() => update('seed', randomSeed())} className="rounded-xl border border-border bg-elevated px-3 text-sm hover:border-sky-400/50">↻</button>
-                </div>
-              </label>
             )}
           </div>
         )}
       </section>}
 
-      <div className="mt-auto pt-1">
+      {/* Main Execution Button */}
+      <div className="mt-auto pt-2">
         {processing ? (
-          <div className="rounded-2xl border border-sky-400/20 bg-gradient-to-br from-sky-500/10 to-blue-900/10 p-4 shadow-xl shadow-blue-950/30">
-            <div className="mb-2 flex justify-between gap-3 text-xs"><span className="truncate text-sky-100">{progress.label}</span><strong className="font-mono text-white">{progress.percent}%</strong></div>
-            <div className="h-2 overflow-hidden rounded-full bg-slate-950"><div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-300 transition-all duration-700" style={{ width: `${progress.percent}%` }} /></div>
-            {generating && <button onClick={onCancel} className="mt-3 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-300 hover:bg-white/10">Cancelar proceso</button>}
+          <div className="loading-card loading-card-compact rounded-3xl p-4.5">
+            <div className="mb-2 flex justify-between gap-3 text-xs">
+              <span className="flex min-w-0 items-center gap-2 truncate text-sky-100 font-bold">
+                <SpinnerGap size={16} weight="bold" className="shrink-0 animate-spin text-amber-300" aria-hidden="true" />
+                {progress.label}
+              </span>
+              <strong className="font-mono text-white font-extrabold">{progress.percent}%</strong>
+            </div>
+            <div className="progress-track h-2.5 rounded-full">
+              <div className="progress-fill progress-beam h-full rounded-full transition-all duration-700" style={{ width: `${progress.percent}%` }} />
+            </div>
+            {generating && (
+              <button
+                onClick={() => {
+                  sounds.playWarning();
+                  onCancel();
+                }}
+                className="mt-3 w-full rounded-full border border-white/15 bg-white/10 px-4 py-2 text-xs font-bold text-slate-200 hover:bg-white/20 transition-all"
+              >
+                Cancelar
+              </button>
+            )}
           </div>
         ) : (
-          <button onClick={onGenerate} disabled={blocked} className="group relative w-full overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-sky-500 to-cyan-400 px-4 py-3.5 text-sm font-semibold text-white shadow-[0_15px_40px_rgba(22,137,232,0.28)] transition hover:-translate-y-0.5 hover:shadow-[0_20px_50px_rgba(22,137,232,0.36)] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:translate-y-0">
-            <span className="relative z-10 flex items-center justify-center gap-2">{actionLabel}<span className="transition-transform group-hover:translate-x-1">→</span></span>
+          <button
+            onClick={() => {
+              sounds.playClick();
+              onGenerate();
+            }}
+            disabled={blocked}
+            className="btn-glass-primary group relative w-full overflow-hidden rounded-full py-4 text-sm font-extrabold text-white shadow-[0_12px_40px_rgba(37,99,235,0.6)] transition-all duration-300 hover:scale-[1.03] hover:shadow-[0_20px_55px_rgba(37,99,235,0.75)] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:scale-100"
+          >
+            <span className="relative z-10 flex items-center justify-center gap-2.5 font-outfit text-sm tracking-wide">
+              {actionLabel}
+              <ArrowRight size={19} weight="bold" className="transition-transform group-hover:translate-x-1.5" aria-hidden="true" />
+            </span>
           </button>
         )}
       </div>

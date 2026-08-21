@@ -9,7 +9,10 @@ class FakePipeline:
     def __init__(self):
         self.calls = []
         self.config = type("Config", (), {"mlx_seed": 42})()
-        self.last_paint_metrics = {"reference_anchored": True, "anchor_view": 0}
+        self.last_paint_metrics = {
+            "reference_conditioning": "native_reference_attention",
+            "reference_anchored": False,
+        }
 
     def __call__(self, **kwargs):
         self.calls.append(kwargs)
@@ -49,7 +52,8 @@ class PaintServiceTests(unittest.TestCase):
             self.assertEqual(report["texture_seed"], 123)
             self.assertEqual(report["paint_profile"]["views"], 6)
             self.assertEqual(report["paint_profile"]["resolution"], 512)
-            self.assertTrue(report["reference_anchored"])
+            self.assertFalse(report["reference_anchored"])
+            self.assertEqual(report["reference_conditioning"], "native_reference_attention")
             self.assertEqual(pipeline.config.mlx_seed, 123)
             self.assertEqual(pipeline.config.material_profile, "animal")
             self.assertEqual(pipeline.config.material_category, "animal")

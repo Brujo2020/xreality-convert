@@ -1,0 +1,81 @@
+{
+  "artifacts": {
+    "front": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/dgrauet-fox-paint1k-2026-08-03/evidence-strict/native-paint-front.png",
+    "quarter-left": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/dgrauet-fox-paint1k-2026-08-03/evidence-strict/native-paint-quarter-left.png",
+    "quarter-right": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/dgrauet-fox-paint1k-2026-08-03/evidence-strict/native-paint-quarter-right.png"
+  },
+  "calibration": {
+    "cameraDirection": [
+      -0.172,
+      -0.1392,
+      0.9752
+    ],
+    "elevationDegrees": -8.0,
+    "offsetX": 254.33302660562026,
+    "offsetY": 256.97087543164054,
+    "referenceSize": [
+      512,
+      512
+    ],
+    "scalePixelsPerUnit": 222.80405577114865,
+    "silhouetteIoU": 0.7899,
+    "yawDegrees": 350.0
+  },
+  "gate": {
+    "decision": "reject",
+    "front": {
+      "decision": "reject",
+      "gateVersion": "xreality-native-paint-v2",
+      "metrics": {
+        "silhouetteIoU": 0.7823,
+        "spatialColorCorrelation": 0.7718
+      },
+      "passed": false,
+      "reasons": [
+        "spatial_texture_mismatch"
+      ],
+      "thresholds": {
+        "minimumSilhouetteIoU": 0.8,
+        "minimumSpatialColorCorrelation": 0.8
+      }
+    },
+    "gateVersion": "xreality-native-paint-v3",
+    "passed": false,
+    "quarters": {
+      "decision": "pass",
+      "gateVersion": "xreality-quarter-artifact-v1",
+      "metrics": {
+        "quarter-left": {
+          "colorRatio": 0.5215,
+          "colorRetention": 0.9732,
+          "paletteSimilarity": 0.9331
+        },
+        "quarter-right": {
+          "colorRatio": 0.5854,
+          "colorRetention": 1.0,
+          "paletteSimilarity": 0.9163
+        }
+      },
+      "passed": true,
+      "reasons": [],
+      "thresholds": {
+        "minimumColorRetention": 0.8,
+        "minimumPaletteSimilarity": 0.8
+      }
+    },
+    "reasons": [
+      "spatial_texture_mismatch"
+    ]
+  },
+  "hdriInvoked": false,
+  "inputGlb": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/dgrauet-fox-paint1k-2026-08-03/dgrauet-hunyuan-paint.glb",
+  "inputGlbSha256": "f6e55e1339668eb1cd3ecdb1a372b57a757bc9be31e9eb2bd81fc26e4e4e012c",
+  "lighting": "embedded_base_color_only",
+  "paintGateVersion": "xreality-native-paint-v3",
+  "reference": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/engine/Hunyuan3D-2.1-mlx/hy3dpaint/assets/case_1/image.png",
+  "referenceSha256": "3e29da7245fddb6ac4a571a6243c2e6256ccb753b094b7facdcbbcb018358c66",
+  "renderMaximumDimension": 512,
+  "renderWorkers": 3,
+  "renderer": "trimesh_uv_raster",
+  "schemaVersion": 1
+}

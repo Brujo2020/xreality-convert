@@ -68,7 +68,7 @@ export default function Gallery({ history, activeId, onSelect }) {
                       <span className="mt-1 font-mono text-[7px] uppercase tracking-[0.16em] text-slate-500">{item.type === 'glb' ? 'GLB' : 'STL'}</span>
                     </div>
                   ) : (
-                    <img src={`data:image/png;base64,${item.image}`} alt={item.prompt} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" loading="lazy" />
+                    <img src={item.image?.startsWith('data:') ? item.image : `data:image/png;base64,${item.image}`} alt={item.prompt} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" loading="lazy" />
                   )}
                   <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#020b1c] via-[#020b1c]/75 to-transparent px-2 pb-2 pt-5 text-left">
                     <span className="block truncate text-[8px] text-slate-300">{item.assetName || item.prompt}</span>

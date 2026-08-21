@@ -1,0 +1,20 @@
+Xreality Convert includes third-party software under its own terms.
+
+Hunyuan3D-2.1 and the bundled Hunyuan3D Paint implementation are subject to
+the Tencent Hunyuan 3D 2.1 Community License Agreement. The complete current
+license and required Notice file are installed inside the application at:
+
+  Contents/Resources/legal/Hunyuan3D-2.1-LICENSE.txt
+  Contents/Resources/legal/Hunyuan3D-2.1-NOTICE.txt
+
+The optional AgenticVibes quality-paint lane includes code derived from the
+AgenticVibes ComfyUI Hunyuan3D Paint integration. Its bundled license and
+notice files are installed at:
+
+  Contents/Resources/legal/AgenticVibes-Hunyuan3D-Paint-LICENSE.txt
+  Contents/Resources/legal/AgenticVibes-Hunyuan3D-Paint-LICENSE-MIT.txt
+  Contents/Resources/legal/AgenticVibes-Hunyuan3D-Paint-NOTICE.txt
+
+Those terms include territorial restrictions and notice obligations. Review
+them before redistribution or commercial deployment. This notice does not
+replace the license text and is not legal advice.

@@ -1,0 +1,21 @@
+{
+  "status": "pass",
+  "model": "AgenticVibes/hunyuan3d-2.1-mlx",
+  "revision": "06ff58f0778649cbfc18f393925373782c6a705b",
+  "source_revision": "3d8e93106f4b91cfb3b24ffc311a3b432b091a86",
+  "steps": 4,
+  "view_size": 512,
+  "texture_size": 1024,
+  "seed": 42,
+  "diffusion_seconds": 117.132,
+  "bake_seconds": 7.08,
+  "inpaint_seconds": 0.674,
+  "elapsed_seconds": 125.436,
+  "mps_current_gb": 7.185,
+  "mps_driver_gb": 26.995,
+  "mlx_active_gb": 4.077,
+  "mlx_peak_gb": 13.451,
+  "process_max_rss_gb": 12.625,
+  "swap_delta_mb": 11319.75,
+  "glb": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/agenticvibes-fox-paint1k-2026-08-03/agenticvibes-paint.glb"
+}

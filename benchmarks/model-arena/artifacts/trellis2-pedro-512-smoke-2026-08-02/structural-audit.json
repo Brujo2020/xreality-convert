@@ -1,0 +1,57 @@
+{
+  "bytes": 9711088,
+  "gates": {
+    "geometry": true,
+    "textures": true,
+    "uv": true
+  },
+  "geometry": {
+    "components": 34082,
+    "degenerate_face_ratio": 0.0,
+    "faces": 94605,
+    "finite_vertex_ratio": 1.0,
+    "meshes": 1,
+    "uv_degenerate_face_ratio": 1.057026584218593e-05,
+    "uv_finite_ratio": 1.0,
+    "uv_in_unit_square_ratio": 1.0,
+    "uv_vertices": 157146,
+    "vertices": 157146,
+    "watertight_meshes": 0
+  },
+  "images": [
+    {
+      "embedded": true,
+      "height": 1024,
+      "mime_type": "image/png",
+      "mode": "RGBA",
+      "width": 1024
+    },
+    {
+      "embedded": true,
+      "height": 1024,
+      "mime_type": "image/png",
+      "mode": "RGB",
+      "width": 1024
+    }
+  ],
+  "passed": true,
+  "path": "/Users/mramospe/Proyectos/Development/3DFromImage/ollama-image-studio/benchmarks/model-arena/artifacts/trellis2-pedro-512-smoke-2026-08-02/trellis2-pedro-512-smoke.glb",
+  "pbr": {
+    "embedded_base_color": true,
+    "embedded_images": 2,
+    "embedded_metallic_roughness": true,
+    "images": 2,
+    "materials": 1,
+    "passed": true,
+    "reasons": [],
+    "textured_primitives": 1,
+    "textures": 2,
+    "uv_mapped_primitives": 1
+  },
+  "pbr_score": 40,
+  "promotion_passed": false,
+  "require_pbr": true,
+  "structural_score": 80.0,
+  "visual_quality": "not_measured",
+  "visual_review": null
+}

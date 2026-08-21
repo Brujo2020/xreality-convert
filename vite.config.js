@@ -17,8 +17,16 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-    // The WebGL viewers are lazy chunks and do not penalize initial startup.
-    // Three.js is intentionally isolated behind that interaction boundary.
-    chunkSizeWarningLimit: 750,
+    chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          three: ['three'],
+          phosphor: ['@phosphor-icons/react'],
+          jscad: ['@jscad/modeling', '@jscad/stl-serializer'],
+        },
+      },
+    },
   },
 });
+
