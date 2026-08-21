@@ -527,6 +527,8 @@ export default function PromptPanel({
   const [imageInfo, setImageInfo] = useState(null);
   const isMeshy = engineProvider === 'meshy';
   const processing = generating || installingEngine || installingModel;
+  const overrideCount = Object.keys(manualOverrides || {}).length;
+  const categoryDefaults = MODEL_CATEGORIES[modelCategory] || MODEL_CATEGORIES.product;
 
   useEffect(() => {
     if (!image3dInput?.base64) {
