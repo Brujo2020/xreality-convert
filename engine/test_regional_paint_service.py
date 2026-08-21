@@ -138,7 +138,7 @@ class TestRegionalPaintService(unittest.TestCase):
         mock_paint_service = MagicMock()
 
         def mock_run(mesh_path, image_path, output_glb_path, **kwargs):
-            if "p1" in str(mesh_path):
+            if Path(mesh_path).stem == "p1":
                 mesh = trimesh.creation.box()
                 mesh.export(str(output_glb_path))
                 return {"passed": True}
