@@ -927,7 +927,7 @@ export default function PromptPanel({
             )}
           </div>
         )}
-      </section>}
+      </section>
 
       {/* Main Execution Button */}
       <div className="mt-auto pt-2">

@@ -1560,32 +1560,7 @@ ipcMain.handle('hunyuan:generate3D', async (event, params) => {
         hunyuanActiveJobId = null;
         return missionFailure({ ok: false, cancelled: true, error: 'Generación 3D cancelada.' });
       }
-      await new Promise((r) => setTimeout(r, 1000));
-      let s;
-      try {
-        s = await hunyuanRequest({
-          method: 'GET',
-          pathName: `/status/${job_id}`,
-          timeout: 30000,
-        });
-        consecutivePollFailures = 0;
-      } catch (pollError) {
-        if (!isTransientLocalPollError(pollError) || consecutivePollFailures >= 20) {
-          throw pollError;
-        }
-        consecutivePollFailures += 1;
-        event.sender.send('hunyuan:progress', {
-          jobId: job_id,
-          stage: 'MLX ocupado · conservando el job local',
-          progress: 97,
-          percent: 97,
-          remaining: null,
-          status: 'running',
-        });
-        continue;
-      }
       await new Promise((r) => setTimeout(r, pollDelay));
-
       let s;
       try {
         s = await hunyuanRequest({
@@ -1593,16 +1568,25 @@ ipcMain.handle('hunyuan:generate3D', async (event, params) => {
           pathName: `/status/${job_id}`,
           timeout: 60000,
         });
+        consecutivePollFailures = 0;
         consecutivePollErrors = 0;
-      } catch (pollErr) {
+      } catch (pollError) {
         consecutivePollErrors += 1;
-        console.warn(`[hunyuan] status poll exception (${consecutivePollErrors}): ${pollErr.message}`);
-        // If Python backend is busy calculating dense MLX / decimation / textures, DO NOT ABORT!
-        if (consecutivePollErrors < 60) {
-          pollDelay = 1500;
+        consecutivePollFailures += 1;
+        console.warn(`[hunyuan] status poll exception (${consecutivePollErrors}): ${pollError.message}`);
+        if (consecutivePollErrors < 120) {
+          event.sender.send('hunyuan:progress', {
+            jobId: job_id,
+            stage: 'Procesando en Apple Silicon MLX GPU…',
+            progress: 92,
+            percent: 92,
+            remaining: null,
+            status: 'running',
+          });
+          pollDelay = 2000;
           continue;
         }
-        throw pollErr;
+        throw pollError;
       }
 
       if (s.statusCode !== 200) {

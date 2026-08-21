@@ -19,17 +19,6 @@ import { XR_PROFILES, profileAudit } from '../lib/xrProfiles.js';
 import { getAuditSemaphore } from '../lib/uiStatus.js';
 import { nextActionForError } from '../lib/errorActions.js';
 
-const StlViewer = lazy(() => import('./StlViewer.jsx'));
-const GltfViewer = lazy(() => import('./GltfViewer.jsx'));
-
-function ViewerFallback() {
-  return (
-    <div className="flex h-full w-full items-center justify-center font-mono text-[10px] uppercase tracking-[0.18em] text-sky-300/60">
-      Cargando visor 3D…
-    </div>
-  );
-}
-
 import StlViewer from './StlViewer.jsx';
 import GltfViewer from './GltfViewer.jsx';
 import ErrorBoundary from './ErrorBoundary.jsx';
