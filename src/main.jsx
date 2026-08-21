@@ -106,7 +106,7 @@ if (import.meta.env.DEV && !window.localTools) {
   };
 }
 
-if (import.meta.env.DEV && !window.superagents) {
+if (!window.superagents) {
   window.superagents = {
     listSkills: async () => coreSkillCatalog,
     preview: async (input) => browserMission(input),

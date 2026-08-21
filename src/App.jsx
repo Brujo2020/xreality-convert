@@ -553,6 +553,7 @@ export default function App() {
 
   useEffect(() => {
     let mounted = true;
+    if (!window.superagents?.listSkills) return undefined;
     window.superagents.listSkills()
       .then((catalog) => {
         if (mounted) setLocalSkillCount(catalog?.skills?.length || 0);
@@ -560,12 +561,12 @@ export default function App() {
       .catch(() => {
         if (mounted) setLocalSkillCount(0);
       });
-    window.superagents.active()
+    window.superagents.active?.()
       .then((activeMission) => {
         if (mounted && activeMission) setMission(activeMission);
       })
       .catch(() => {});
-    const unsubscribe = window.superagents.onMission((nextMission) => {
+    const unsubscribe = window.superagents.onMission?.((nextMission) => {
       if (mounted) setMission(nextMission);
     });
     return () => {
@@ -575,7 +576,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (processing) return undefined;
+    if (processing || !window.superagents?.preview) return undefined;
     const key = JSON.stringify([
       mode,
       modelCategory,
@@ -593,10 +594,10 @@ export default function App() {
       texture: false,
       textureSize: asset.textureSize,
       inputReady: mode === 'image3d' ? Boolean(image3dInput) : Boolean(prompt.trim()),
-    }).then((preview) => {
-      if (mounted) {
+    }).then((previewMission) => {
+      if (mounted && previewMission) {
         missionPreviewKey.current = key;
-        setMission(preview);
+        setMission(previewMission);
       }
     }).catch(() => {});
     return () => {

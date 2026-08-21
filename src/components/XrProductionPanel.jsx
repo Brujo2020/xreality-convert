@@ -23,9 +23,20 @@ const MATERIAL_HINTS = [
   ['concrete', 'Hormigón'], ['wood', 'Madera'], ['matte_paint', 'Pintura mate'],
 ];
 
+const CONTROL_BADGES = {
+  recommended: ['Recomendado', 'border-cyan-300/15 bg-cyan-300/5 text-cyan-200'],
+  modified: ['Modificado', 'border-amber-300/15 bg-amber-300/5 text-amber-200'],
+  out: ['Fuera de rango', 'border-rose-300/15 bg-rose-300/5 text-rose-200'],
+};
+
+function ControlBadge({ status }) {
+  const [label, className] = CONTROL_BADGES[status] || CONTROL_BADGES.modified;
+  return <span className={`rounded-md border px-2 py-0.5 font-mono text-[7px] uppercase tracking-wider ${className}`}>{label}</span>;
+}
+
 const FACE_BUDGETS = [15000, 20000, 30000, 35000, 40000, 45000, 50000, 60000, 70000, 80000, 90000, 100000, 110000, 200000];
 
-export default function XrProductionPanel({ asset, setAsset, setSteps3d, disabled }) {
+export default function XrProductionPanel({ asset, setAsset, setSteps3d, disabled, recommended = null }) {
   const update = (patch) => setAsset((current) => ({ ...current, ...patch }));
   const selectProfile = (id) => {
     const profile = XR_PROFILES[id];
