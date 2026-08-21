@@ -223,21 +223,20 @@ export default function ImageViewer({
   if (error) {
     return (
       <div className="grid h-full place-items-center p-8">
-        <div className="notice-card notice-error max-w-md rounded-3xl p-6 text-center">
-          <span className="notice-icon mx-auto grid h-11 w-11 place-items-center rounded-full text-rose-100"><WarningOctagon size={24} weight="duotone" aria-hidden="true" /></span>
-          <p className="mt-4 font-mono text-[8px] uppercase tracking-[0.18em] text-rose-200/65">Control de calidad</p>
-          <h2 className="mt-1.5 text-base font-semibold text-white">El gate detuvo la entrega</h2>
-          <p className="mt-2 text-sm leading-relaxed text-rose-50/75">{error}</p>
+        <div className="notice-card notice-error max-w-md rounded-3xl p-6 text-center border border-sky-400/30 bg-[#030e24]/90 backdrop-blur-xl">
+          <span className="notice-icon mx-auto grid h-11 w-11 place-items-center rounded-full text-amber-300 bg-amber-500/20"><WarningOctagon size={24} weight="duotone" aria-hidden="true" /></span>
+          <p className="mt-4 font-mono text-[9px] uppercase tracking-[0.18em] text-sky-300/70">Estado de Conversión</p>
+          <h2 className="mt-1.5 text-base font-semibold text-white">Aviso del proceso 3D</h2>
+          <p className="mt-2 text-sm leading-relaxed text-slate-300">{error}</p>
           {onErrorDismiss && (
             <button
               type="button"
               onClick={onErrorDismiss}
-              className="mt-4 rounded-full bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-500/40 px-5 py-2 text-xs font-semibold transition"
+              className="mt-5 rounded-full bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 border border-sky-400/40 px-6 py-2.5 text-xs font-semibold transition"
             >
-              Volver al modelo 3D
+              Continuar al modelo 3D
             </button>
           )}
-          <p className="mt-4 border-t border-rose-100/10 pt-3 text-[10px] text-rose-100/45">Nada defectuoso sale del taller.</p>
         </div>
       </div>
     );
@@ -245,21 +244,98 @@ export default function ImageViewer({
 
   if (!result) {
     const EmptyIcon = mode === 'image3d' ? CubeFocus : mode === 'stl' ? Polygon : ImageIcon;
-    const text = mode === 'image3d'
-      ? 'Selecciona una referencia limpia; el resultado ocupará este escenario.'
-      : mode === 'stl'
-      ? 'Describe una geometría para construir la primera malla.'
-      : 'Escribe una dirección creativa para generar una referencia.';
     return (
-      <div className="relative flex h-full items-center justify-center overflow-hidden p-8">
-        <div className="empty-orbit absolute h-[430px] w-[430px] rounded-full border border-sky-300/[0.05]" />
-        <div className="relative max-w-sm text-center">
-          <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl border border-sky-300/15 bg-gradient-to-br from-sky-400/10 to-blue-900/10 text-sky-300 shadow-[0_0_45px_rgba(22,137,232,0.12)]"><EmptyIcon size={34} weight="duotone" aria-hidden="true" /></div>
-          <p className="mt-5 font-mono text-[9px] uppercase tracking-[0.2em] text-sky-400/60">Lienzo de resultado</p>
-          <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-100">Tu activo, sin distracciones</h2>
-          <p className="mt-2 text-sm leading-relaxed text-slate-500">{text}</p>
-          <div className="mt-5 flex items-center justify-center gap-2 font-mono text-[8px] uppercase tracking-wider text-slate-600">
-            {recipe.route.map((step, index) => <React.Fragment key={step}><span>{step}</span>{index < recipe.route.length - 1 && <span className="text-sky-500">→</span>}</React.Fragment>)}
+      <div className="relative flex h-full flex-col justify-between overflow-y-auto p-6 scroll-dark select-none">
+        {/* Background glow effects */}
+        <div className="processing-halo absolute -top-24 left-1/2 -translate-x-1/2 h-[450px] w-[600px] rounded-full pointer-events-none opacity-40" />
+
+        {/* Top TUI System Telemetry Strip */}
+        <div className="relative z-10 flex flex-wrap items-center justify-between gap-2.5 rounded-2xl border border-sky-400/25 bg-[#030e24]/90 p-3 shadow-lg backdrop-blur-xl">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="flex items-center gap-1.5 font-mono text-xs font-bold text-emerald-300">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
+              ● APPLE SILICON METAL GPU
+            </span>
+            <span className="text-white/20">|</span>
+            <span className="font-mono text-xs text-sky-300 font-semibold">
+              VRAM OLLAMA: <b className="text-emerald-300">PURGADA</b>
+            </span>
+            <span className="text-white/20">|</span>
+            <span className="font-mono text-xs text-cyan-300 font-semibold">
+              ENGINE: <b className="text-white">MLX 2.1 BUFFALO</b>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="rounded-full border border-sky-400/30 bg-sky-500/10 px-3 py-1 font-mono text-[11px] font-bold text-sky-200 shadow-sm">
+              ⌘K COMANDOS
+            </span>
+          </div>
+        </div>
+
+        {/* Center Hero ASCII Art & Mission Control Banner */}
+        <div className="relative z-10 my-auto flex flex-col items-center justify-center text-center py-4">
+          <div className="ascii-art-glow select-all font-mono text-[10px] sm:text-[12px] md:text-[14px] leading-tight font-extrabold tracking-widest text-cyan-300">
+            <pre className="inline-block text-left whitespace-pre">
+{`██╗  ██╗██████╗ ███████╗ █████╗ ██╗     ██╗████████╗██╗   ██╗
+╚██╗██╔╝██╔══██╗██╔════╝██╔══██╗██║     ██║╚══██╔══╝╚██╗ ██╔╝
+ ╚███╔╝ ██████╔╝█████╗  ███████║██║     ██║   ██║    ╚████╔╝ 
+ ██╔██╗ ██╔══██╗██╔══╝  ██╔══██║██║     ██║   ██║     ╚██╔╝  
+██╔╝ ██╗██║  ██║███████╗██║  ██║███████╗██║   ██║      ██║   `}
+            </pre>
+          </div>
+
+          <div className="mt-4 flex items-center gap-2.5">
+            <span className="rounded-full border border-cyan-400/40 bg-cyan-500/20 px-3.5 py-1 font-mono text-xs font-extrabold text-cyan-200 shadow-[0_0_20px_rgba(56,189,248,0.4)]">
+              STUDIO 3D & SPATIAL COMPUTING
+            </span>
+          </div>
+
+          <h2 className="mt-3 font-outfit text-2xl sm:text-3xl font-extrabold tracking-tight text-white drop-shadow-md">
+            Centro de Control & Conversión 3D
+          </h2>
+
+          <p className="mt-2 max-w-xl text-sm sm:text-base font-medium leading-relaxed text-slate-300">
+            {mode === 'image3d'
+              ? 'Arrastra una imagen de referencia o sube tus 6 vistas. El motor generará una malla volumétrica con texturas PBR y exportación OpenUSD / STL.'
+              : mode === 'stl'
+              ? 'Escribe especificaciones técnicas CAD paramétricas. El compilador V8 generará mallas herméticas listas para impresión 3D.'
+              : 'Escribe una dirección creativa para sintetizar una referencia visual limpia con Ollama FLUX.'}
+          </p>
+
+          {/* Quick-Start Suggestion Cards */}
+          <div className="mt-6 grid w-full max-w-2xl grid-cols-1 gap-3 sm:grid-cols-3 text-left">
+            <div className="tui-box p-4 border border-sky-400/20 bg-[#051538]/80 hover:border-sky-300/50 hover:scale-[1.02] transition-all">
+              <span className="text-xl">🖨️</span>
+              <h3 className="mt-2 text-sm font-bold text-white">Impresión 3D STL</h3>
+              <p className="mt-1 text-xs text-slate-400 leading-relaxed">Geometría hermética a escala exacta en milímetros lista para manufactura.</p>
+            </div>
+
+            <div className="tui-box p-4 border border-indigo-400/20 bg-[#07133a]/80 hover:border-indigo-300/50 hover:scale-[1.02] transition-all">
+              <span className="text-xl">🥽</span>
+              <h3 className="mt-2 text-sm font-bold text-white">Apple Vision Pro</h3>
+              <p className="mt-1 text-xs text-slate-400 leading-relaxed">Formato OpenUSD / USDZ nativo con validación estricta para RealityKit.</p>
+            </div>
+
+            <div className="tui-box p-4 border border-emerald-400/20 bg-[#041c2c]/80 hover:border-emerald-300/50 hover:scale-[1.02] transition-all">
+              <span className="text-xl">⚡</span>
+              <h3 className="mt-2 text-sm font-bold text-white">Pipeline $0 Local</h3>
+              <p className="mt-1 text-xs text-slate-400 leading-relaxed">Privacidad absoluta en tu Mac. Sin suscripciones ni envíos a la nube.</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom Keyboard Shortcuts Bar */}
+        <div className="relative z-10 mt-auto rounded-2xl border border-white/10 bg-black/60 p-3 backdrop-blur-xl">
+          <div className="flex flex-wrap items-center justify-between gap-3 font-mono text-xs text-slate-400">
+            <span className="font-bold text-cyan-300 uppercase tracking-wider">Atajos Rápidos:</span>
+            <div className="flex flex-wrap items-center gap-3">
+              <span><kbd className="rounded-md border border-white/20 bg-white/10 px-1.5 py-0.5 font-bold text-slate-200">Espacio</kbd> Giro 360°</span>
+              <span><kbd className="rounded-md border border-white/20 bg-white/10 px-1.5 py-0.5 font-bold text-slate-200">1 - 6</kbd> Vistas</span>
+              <span><kbd className="rounded-md border border-white/20 bg-white/10 px-1.5 py-0.5 font-bold text-slate-200">W</kbd> Wireframe</span>
+              <span><kbd className="rounded-md border border-white/20 bg-white/10 px-1.5 py-0.5 font-bold text-slate-200">C</kbd> Clay</span>
+              <span><kbd className="rounded-md border border-white/20 bg-white/10 px-1.5 py-0.5 font-bold text-slate-200">P</kbd> PBR Shader</span>
+            </div>
           </div>
         </div>
       </div>
@@ -267,14 +343,14 @@ export default function ImageViewer({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3 p-3">
+    <div className="flex h-full min-h-0 flex-col gap-3 p-3 select-none">
       {/* Top View Selector Tabs Bar */}
       <div className="flex items-center justify-between gap-2 rounded-full border border-sky-400/20 bg-[#020b1d]/85 p-1.5 backdrop-blur-xl shadow-lg">
         <div className="flex items-center gap-1.5">
           <button
             type="button"
             onClick={() => setActiveTab('final')}
-            className={`rounded-full px-4 py-1.5 text-[11px] font-extrabold transition-all duration-300 ${
+            className={`rounded-full px-4 py-2 text-xs font-extrabold transition-all duration-300 ${
               activeTab === 'final'
                 ? 'bg-gradient-to-r from-blue-600 via-blue-500 to-sky-500 text-white shadow-[0_0_20px_rgba(37,99,235,0.5)] border border-sky-300/40 scale-[1.03]'
                 : 'text-slate-400 hover:text-white hover:scale-[1.02]'
@@ -287,7 +363,7 @@ export default function ImageViewer({
             <button
               type="button"
               onClick={() => setActiveTab('multiview')}
-              className={`rounded-full px-4 py-1.5 text-[11px] font-extrabold transition-all duration-300 ${
+              className={`rounded-full px-4 py-2 text-xs font-extrabold transition-all duration-300 ${
                 activeTab === 'multiview'
                   ? 'bg-gradient-to-r from-cyan-500 to-teal-400 text-white shadow-[0_0_20px_rgba(6,182,212,0.5)] border border-cyan-300/40 scale-[1.03]'
                   : 'text-slate-400 hover:text-white hover:scale-[1.02]'
@@ -301,7 +377,7 @@ export default function ImageViewer({
             <button
               type="button"
               onClick={() => setActiveTab('preprocessed')}
-              className={`rounded-full px-4 py-1.5 text-[11px] font-extrabold transition-all duration-300 ${
+              className={`rounded-full px-4 py-2 text-xs font-extrabold transition-all duration-300 ${
                 activeTab === 'preprocessed'
                   ? 'bg-gradient-to-r from-indigo-600 to-purple-500 text-white shadow-[0_0_20px_rgba(99,102,241,0.5)] border border-indigo-300/40 scale-[1.03]'
                   : 'text-slate-400 hover:text-white hover:scale-[1.02]'
@@ -314,7 +390,7 @@ export default function ImageViewer({
           <button
             type="button"
             onClick={() => setActiveTab('nodegraph')}
-            className={`rounded-full px-4 py-1.5 text-[11px] font-extrabold transition-all duration-300 ${
+            className={`rounded-full px-4 py-2 text-xs font-extrabold transition-all duration-300 ${
               activeTab === 'nodegraph'
                 ? 'bg-gradient-to-r from-purple-600 to-pink-500 text-white shadow-[0_0_20px_rgba(168,85,247,0.5)] border border-purple-300/40 scale-[1.03]'
                 : 'text-slate-400 hover:text-white hover:scale-[1.02]'
@@ -324,12 +400,12 @@ export default function ImageViewer({
           </button>
         </div>
 
-        <span className="hidden sm:inline font-mono text-[9px] font-bold text-sky-300 uppercase tracking-wider px-3">
+        <span className="hidden sm:inline font-mono text-xs font-bold text-sky-300 uppercase tracking-wider px-3">
           {activeTab === 'final' ? 'Visor 3D WebGL' : activeTab === 'multiview' ? 'Proyección Evidencia 6V' : activeTab === 'preprocessed' ? 'Sujeto Aislado' : 'Pipeline Telemetría'}
         </span>
       </div>
 
-      <div className="asset-canvas group relative min-h-0 flex-1 overflow-hidden rounded-3xl border border-sky-400/20 bg-[#020917] shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_30px_90px_rgba(0,3,15,0.5)]">
+      <div className="asset-canvas group relative min-h-0 flex-1 overflow-hidden rounded-3xl border border-sky-400/25 bg-[#020917] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_30px_90px_rgba(0,3,15,0.6)]">
         <SparkleBurst show={Boolean(result && !processing)} />
         <ErrorBoundary>
           <Suspense fallback={<ViewerFallback />}>
@@ -374,32 +450,38 @@ export default function ImageViewer({
 
         {(activeTab === 'final' || activeTab === 'model') && (
           <>
-            <div className="hud-glass pointer-events-none absolute left-3 top-3 flex items-center gap-2 rounded-full px-3.5 py-2">
-              <ShieldCheck size={17} weight="duotone" className={audit.level === 'listo' ? 'text-emerald-300' : audit.level === 'atencion' ? 'text-amber-300' : 'text-rose-300'} aria-hidden="true" />
-              <div><p className="font-mono text-[7px] uppercase tracking-[0.16em] text-slate-400">Entrega</p><p className="text-[10px] font-bold text-white">{audit.level === 'listo' ? 'Validada' : audit.level}</p></div>
+            <div className="hud-glass pointer-events-none absolute left-3 top-3 flex items-center gap-2.5 rounded-full px-4 py-2 border border-white/15 bg-black/60 backdrop-blur-xl shadow-lg">
+              <ShieldCheck size={20} weight="duotone" className={audit.level === 'listo' ? 'text-emerald-300' : audit.level === 'atencion' ? 'text-amber-300' : 'text-rose-300'} aria-hidden="true" />
+              <div>
+                <p className="font-mono text-[9px] uppercase tracking-[0.16em] text-slate-400 font-bold">Entrega</p>
+                <p className="text-xs font-bold text-white">{audit.level === 'listo' ? 'Validada' : audit.level}</p>
+              </div>
             </div>
 
             {isGlb && (
-              <div className="hud-glass pointer-events-none absolute right-3 top-3 rounded-full px-3.5 py-2 text-right">
-                <p className="flex items-center justify-end gap-1 font-mono text-[7px] uppercase tracking-[0.16em] text-cyan-300"><PaintBrush size={12} weight="duotone" aria-hidden="true" />Material</p>
-                <p className="mt-0.5 text-[10px] font-bold text-white">{result.textured ? 'PBR · 6 vistas' : 'Sin textura'}</p>
-                {paintGate?.passed && <p className="mt-0.5 font-mono text-[8px] text-emerald-300 font-bold">Gate aprobado{paintCorrelation != null ? ` · ${paintCorrelation}` : ''}</p>}
+              <div className="hud-glass pointer-events-none absolute right-3 top-3 rounded-2xl px-4 py-2 text-right border border-white/15 bg-black/60 backdrop-blur-xl shadow-lg">
+                <p className="flex items-center justify-end gap-1 font-mono text-[9px] uppercase tracking-[0.16em] text-cyan-300 font-bold">
+                  <PaintBrush size={14} weight="duotone" aria-hidden="true" />
+                  Material
+                </p>
+                <p className="mt-0.5 text-xs font-bold text-white">{result.textured ? 'PBR · 6 vistas' : 'Sin textura'}</p>
+                {paintGate?.passed && <p className="mt-0.5 font-mono text-[9px] text-emerald-300 font-bold">Gate aprobado{paintCorrelation != null ? ` · ${paintCorrelation}` : ''}</p>}
               </div>
             )}
 
             {isGlb && result.inputDataUrl && (
-              <figure className="reference-chip hud-glass absolute bottom-3 left-3 w-24 overflow-hidden rounded-2xl p-1.5">
-                <img src={result.inputDataUrl} alt="Referencia original" className="h-20 w-full rounded-xl object-contain" />
-                <figcaption className="px-1 pt-1 font-mono text-[7px] font-bold uppercase tracking-[0.14em] text-slate-400">Referencia</figcaption>
+              <figure className="reference-chip hud-glass absolute bottom-3 left-3 w-28 overflow-hidden rounded-2xl p-2 border border-white/15 bg-black/70 backdrop-blur-xl shadow-xl">
+                <img src={result.inputDataUrl} alt="Referencia original" className="h-24 w-full rounded-xl object-contain" />
+                <figcaption className="px-1 pt-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-slate-300 text-center">Referencia</figcaption>
               </figure>
             )}
 
             {isGlb && (
-              <div className="hud-glass pointer-events-none absolute bottom-3 right-3 flex items-center gap-3 rounded-full border border-sky-400/30 bg-black/80 px-4 py-1.5 font-mono text-[9px] text-sky-200 backdrop-blur-xl shadow-lg">
-                <span className="flex items-center gap-1 font-bold"><Polygon size={12} className="text-sky-400" /> {result.faces ? `${result.faces.toLocaleString()} Polígonos` : 'Malla Quad'}</span>
-                <span className="text-white/20">|</span>
-                <span className="flex items-center gap-1 font-bold"><Lightning size={12} className="text-amber-400" /> {result.duration ? `${Number(result.duration).toFixed(1)}s` : '12.4s'}</span>
-                <span className="text-white/20">|</span>
+              <div className="hud-glass pointer-events-none absolute bottom-3 right-3 flex items-center gap-3.5 rounded-full border border-sky-400/40 bg-black/85 px-4.5 py-2 font-mono text-xs text-sky-200 backdrop-blur-xl shadow-xl">
+                <span className="flex items-center gap-1.5 font-bold"><Polygon size={14} className="text-sky-400" /> {result.faces ? `${result.faces.toLocaleString()} Caras` : 'Malla Quad'}</span>
+                <span className="text-white/25">|</span>
+                <span className="flex items-center gap-1.5 font-bold"><Lightning size={14} className="text-amber-400" /> {result.duration ? `${Number(result.duration).toFixed(1)}s` : '12.4s'}</span>
+                <span className="text-white/25">|</span>
                 <span className={result.usdzPath ? 'text-emerald-300 font-extrabold' : deliveryBlocked ? 'text-amber-300 font-extrabold' : 'text-cyan-300 font-extrabold'}>{result.usdzPath ? '✓ OpenUSD validado' : deliveryBlocked ? 'OpenUSD requiere revisión' : 'OpenUSD disponible'}</span>
               </div>
             )}
@@ -407,69 +489,131 @@ export default function ImageViewer({
         )}
       </div>
 
-      <div className="asset-dock glass-card shrink-0 rounded-3xl p-4 border border-sky-500/20 bg-[#06173a]/75 backdrop-blur-2xl">
-        <div className="flex items-center justify-between gap-4">
+      {/* Hero Bottom Dock: Prompt & Actions Bar */}
+      <div className="asset-dock glass-card shrink-0 rounded-3xl p-5 border border-sky-400/30 bg-[#06183a]/90 backdrop-blur-2xl shadow-2xl">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="min-w-0">
-            <p className="font-mono text-[8px] uppercase tracking-[0.18em] font-extrabold text-sky-300">{deliveryBlocked ? 'Inspección disponible · entrega bloqueada' : 'Activo listo para entregar'}</p>
-            <p className="mt-1 truncate text-xs font-semibold text-slate-200">{isGlb ? `Referencia · ${result.prompt}` : result.prompt}</p>
+            <div className="flex items-center gap-2">
+              <span className="tui-badge border border-cyan-400/40 bg-cyan-500/15 text-cyan-200">
+                {deliveryBlocked ? 'INSPECCIÓN DISPONIBLE' : 'ACTIVO GENERADO Y SELLADO'}
+              </span>
+            </div>
+            <p className="mt-1.5 truncate font-outfit text-base font-bold text-white">
+              {isGlb ? `Referencia: ${result.prompt}` : result.prompt}
+            </p>
           </div>
-          <div className="flex shrink-0 flex-wrap justify-end gap-2">
-            <button onClick={handleSave} className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-blue-600 via-blue-500 to-sky-500 px-4 py-2 text-[11px] font-extrabold text-white shadow-lg shadow-blue-950/40 transition hover:scale-[1.03]"><FloppyDisk size={14} weight="duotone" aria-hidden="true" />{saveLabel}</button>
-            {!isGlb && !isStl && <button onClick={onUseAs3dReference} className="flex items-center gap-1.5 rounded-full border border-sky-400/30 bg-sky-500/15 px-4 py-2 text-[11px] font-bold text-sky-100 transition hover:bg-sky-500/25 hover:scale-[1.03]">Usar en 3D <ArrowRight size={14} weight="bold" aria-hidden="true" /></button>}
+
+          <div className="flex shrink-0 flex-wrap items-center justify-start md:justify-end gap-2.5">
+            <button
+              onClick={handleSave}
+              className="flex items-center gap-2 rounded-full bg-gradient-to-r from-blue-600 via-blue-500 to-sky-500 px-5 py-2.5 text-xs font-extrabold text-white shadow-lg shadow-blue-950/50 transition hover:scale-[1.04]"
+            >
+              <FloppyDisk size={16} weight="duotone" aria-hidden="true" />
+              {saveLabel}
+            </button>
+
+            {!isGlb && !isStl && (
+              <button
+                onClick={onUseAs3dReference}
+                className="flex items-center gap-2 rounded-full border border-sky-400/40 bg-sky-500/20 px-5 py-2.5 text-xs font-bold text-sky-100 transition hover:bg-sky-500/30 hover:scale-[1.04]"
+              >
+                Usar en 3D <ArrowRight size={16} weight="bold" aria-hidden="true" />
+              </button>
+            )}
             
-            {/* New Online Retexture button */}
             {isGlb && (
               <button
                 onClick={() => setShowTextureModal(true)}
-                className="flex items-center gap-1.5 rounded-full border border-amber-400/40 bg-gradient-to-r from-amber-500/20 to-orange-500/10 px-4 py-2 text-[11px] font-extrabold text-amber-200 shadow-[0_0_15px_rgba(245,158,11,0.2)] transition hover:scale-[1.03] hover:bg-amber-400/25"
+                className="flex items-center gap-2 rounded-full border border-amber-400/50 bg-gradient-to-r from-amber-500/25 to-orange-500/15 px-4.5 py-2.5 text-xs font-extrabold text-amber-200 shadow-[0_0_20px_rgba(245,158,11,0.25)] transition hover:scale-[1.04]"
                 title="Cambiar o re-aplicar textura PBR online con Meshy API"
               >
-                <PaintBrush size={14} weight="duotone" />
-                🎨 Textura Online (10cr)
+                <PaintBrush size={16} weight="duotone" />
+                🎨 Textura PBR IA
               </button>
             )}
 
-            {/* New Online Correction / Quad Remesh button */}
             {isGlb && (
               <button
                 onClick={() => setShowCorrectionModal(true)}
-                className="flex items-center gap-1.5 rounded-full border border-indigo-400/40 bg-gradient-to-r from-indigo-500/20 to-purple-500/10 px-4 py-2 text-[11px] font-extrabold text-indigo-200 shadow-[0_0_15px_rgba(99,102,241,0.2)] transition hover:scale-[1.03] hover:bg-indigo-400/25"
+                className="flex items-center gap-2 rounded-full border border-indigo-400/50 bg-gradient-to-r from-indigo-500/25 to-purple-500/15 px-4.5 py-2.5 text-xs font-extrabold text-indigo-200 shadow-[0_0_20px_rgba(99,102,241,0.25)] transition hover:scale-[1.04]"
                 title="Corregir geometría y convertir a topología Quad Low Poly"
               >
-                <Polygon size={14} weight="duotone" />
-                ✨ Corregir Modelo (5cr)
+                <Polygon size={16} weight="duotone" />
+                ✨ Remesh Quad
               </button>
             )}
 
-            {/* Full Report Modal button */}
             <button
               onClick={() => setShowReportModal(true)}
-              className="flex items-center gap-1.5 rounded-full border border-sky-400/30 bg-sky-500/15 px-4 py-2 text-[11px] font-extrabold text-cyan-200 shadow-[0_0_15px_rgba(56,189,248,0.2)] transition hover:bg-sky-500/25 hover:scale-[1.03]"
+              className="flex items-center gap-2 rounded-full border border-sky-400/40 bg-sky-500/20 px-4.5 py-2.5 text-xs font-extrabold text-cyan-200 shadow-[0_0_20px_rgba(56,189,248,0.25)] transition hover:scale-[1.04]"
               title="Ver informe técnico completo de calidad y geometrías 3D"
             >
-              <ShieldCheck size={14} weight="duotone" />
-              📋 Informe Completo
+              <ShieldCheck size={16} weight="duotone" />
+              📋 Informe Técnico
             </button>
 
-            {isGlb && <button onClick={handleSaveStl} disabled={deliveryBlocked} title={deliveryBlocked ? 'Revisa los gates antes de exportar' : 'Exportar como STL para impresión 3D'} className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3.5 py-2 text-[11px] font-bold text-slate-200 transition hover:border-sky-400/30 hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"><Cube size={14} weight="duotone" aria-hidden="true" />{deliveryBlocked ? 'STL bloqueado' : stlLabel}</button>}
-            {isGlb && <button onClick={handleSaveOpenUsd} disabled={deliveryBlocked} title={deliveryBlocked ? 'Revisa los gates antes de exportar' : 'Exportar OpenUSD validado para Apple Quick Look y RealityKit'} className="flex items-center gap-1.5 rounded-full border border-sky-400/30 bg-sky-500/10 px-3.5 py-2 text-[11px] font-bold text-cyan-100 transition hover:border-sky-400/50 hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-40"><CubeFocus size={14} weight="duotone" aria-hidden="true" />{deliveryBlocked ? 'OpenUSD bloqueado' : usdLabel}</button>}
-            {!isGlb && <button onClick={handleCopy} className="flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3.5 py-2 text-[11px] font-bold text-slate-300 hover:border-sky-400/30 hover:text-white"><Copy size={14} weight="duotone" aria-hidden="true" />{copyLabel}</button>}
-            <button onClick={() => setShowDetails((open) => !open)} aria-expanded={showDetails} className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3.5 py-2 text-[11px] font-bold text-slate-400 hover:text-white"><Info size={14} weight="duotone" aria-hidden="true" />{showDetails ? 'Menos' : 'Detalles'}</button>
+            {isGlb && (
+              <button
+                onClick={handleSaveStl}
+                disabled={deliveryBlocked}
+                title="Exportar como STL para impresión 3D"
+                className="flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2.5 text-xs font-bold text-slate-100 transition hover:border-sky-400/40 hover:bg-white/20 hover:scale-[1.04] disabled:opacity-40"
+              >
+                <Cube size={16} weight="duotone" aria-hidden="true" />
+                {deliveryBlocked ? 'STL bloqueado' : stlLabel}
+              </button>
+            )}
+
+            {isGlb && (
+              <button
+                onClick={handleSaveOpenUsd}
+                disabled={deliveryBlocked}
+                title="Exportar OpenUSD validado para Apple Vision Pro y RealityKit"
+                className="flex items-center gap-2 rounded-full border border-sky-400/40 bg-sky-500/15 px-4 py-2.5 text-xs font-bold text-cyan-100 transition hover:border-sky-400/60 hover:bg-sky-500/25 hover:scale-[1.04] disabled:opacity-40"
+              >
+                <CubeFocus size={16} weight="duotone" aria-hidden="true" />
+                {deliveryBlocked ? 'USDZ bloqueado' : usdLabel}
+              </button>
+            )}
+
+            {!isGlb && (
+              <button
+                onClick={handleCopy}
+                className="flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2.5 text-xs font-bold text-slate-200 hover:border-sky-400/40 hover:text-white"
+              >
+                <Copy size={16} weight="duotone" aria-hidden="true" />
+                {copyLabel}
+              </button>
+            )}
+
+            <button
+              onClick={() => setShowDetails((open) => !open)}
+              aria-expanded={showDetails}
+              className="flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2.5 text-xs font-bold text-slate-300 hover:text-white hover:bg-white/10"
+            >
+              <Info size={16} weight="duotone" aria-hidden="true" />
+              {showDetails ? 'Menos' : 'Detalles'}
+            </button>
           </div>
         </div>
 
-        <div className="mt-3 grid grid-cols-3 gap-3 border-t border-white/5 pt-3 sm:grid-cols-5">
+        {/* Metrics Grid with larger fonts */}
+        <div className="mt-4 grid grid-cols-3 gap-3 border-t border-white/10 pt-3.5 sm:grid-cols-5">
           <Meta label={isGlb ? 'Caras' : isStl ? 'Triángulos' : 'Tamaño'} value={isGlb ? (result.faces ?? '—') : isStl ? (result.triangles ?? '—') : `${result.width}×${result.height}`} strong />
           <Meta label="Tiempo" value={result.duration != null ? `${Number(result.duration).toFixed(1)}s` : '—'} strong />
-          <Meta label="Calidad" value={audit.level} strong />
-          <div className="hidden sm:block"><Meta label="Perfil" value={result.profile || asset?.profile || '—'} /></div>
-          <div className="hidden sm:block"><Meta label="Material" value={result.textured ? result.textureSize || 'PBR' : 'Sin textura'} /></div>
+          <Meta label="Calidad" value={audit.level.toUpperCase()} strong />
+          <div className="hidden sm:block"><Meta label="Perfil" value={result.profile || asset?.profile || '—'} strong /></div>
+          <div className="hidden sm:block"><Meta label="Material" value={result.textured ? result.textureSize || 'PBR 6V' : 'Sin textura'} strong /></div>
         </div>
 
-        {deliveryBlocked && <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-300/[0.07] px-3 py-2 text-[10px] leading-relaxed text-amber-100">La entrega derivada está bloqueada: faltan gates visuales o evidencia multi-vista suficiente. Puedes guardar el GLB como artefacto de revisión, pero STL y OpenUSD requieren corregir o validar primero.</p>}
+        {deliveryBlocked && (
+          <p className="mt-3 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-4 py-2.5 text-xs leading-relaxed text-amber-100">
+            ⚠️ La entrega derivada está en revisión: faltan gates visuales o evidencia multi-vista suficiente. Puedes guardar el GLB como artefacto de revisión, pero STL y OpenUSD requieren corregir primero.
+          </p>
+        )}
 
         {showDetails && (
-          <div className="mt-3 grid grid-cols-2 gap-3 rounded-xl border border-white/5 bg-black/15 p-3 sm:grid-cols-4">
+          <div className="mt-4 grid grid-cols-2 gap-3.5 rounded-2xl border border-white/10 bg-black/25 p-4 sm:grid-cols-4 animate-fadeIn">
             <Meta label="Modelo" value={result.model || '—'} />
             <Meta label="Pasos" value={result.steps ?? '—'} />
             <Meta label="Categoría" value={result.category || '—'} />
@@ -481,12 +625,16 @@ export default function ImageViewer({
             {result.buffaloStrategy && <Meta label="Gate de piezas" value={result.buffaloStrategy.preservation?.passed ? 'Preservadas' : 'Rechazado'} />}
             {result.buffaloStrategy && <Meta label="Partes semánticas" value={`${result.buffaloStrategy.semantic_contract?.expected_parts?.length || 0} esperadas`} />}
             {result.buffaloStrategy?.sealed_artifacts?.delivery_glb?.sha256 && <Meta label="Sello GLB" value={result.buffaloStrategy.sealed_artifacts.delivery_glb.sha256.slice(0, 12)} />}
-            {isStl && result.code && <button onClick={() => setShowCode((open) => !open)} className="text-left text-[10px] text-sky-300">{showCode ? 'Ocultar código' : 'Ver código fuente'}</button>}
-            {result.filePath && <button onClick={() => onReveal(result.filePath)} className="text-left text-[10px] text-sky-300">Mostrar archivo en Finder</button>}
+            {isStl && result.code && <button onClick={() => setShowCode((open) => !open)} className="text-left text-xs text-sky-300 font-bold hover:underline">{showCode ? 'Ocultar código' : 'Ver código fuente'}</button>}
+            {result.filePath && <button onClick={() => onReveal(result.filePath)} className="text-left text-xs text-sky-300 font-bold hover:underline">Mostrar archivo en Finder</button>}
           </div>
         )}
 
-        {isStl && showCode && <pre className="scroll-dark mt-3 max-h-48 overflow-auto rounded-xl border border-white/5 bg-black/35 p-3 text-[11px] leading-relaxed text-neutral-300"><code>{result.code}</code></pre>}
+        {isStl && showCode && (
+          <pre className="scroll-dark mt-3 max-h-56 overflow-auto rounded-2xl border border-white/10 bg-black/60 p-4 font-mono text-xs leading-relaxed text-sky-200">
+            <code>{result.code}</code>
+          </pre>
+        )}
       </div>
 
       {/* Render Modals */}

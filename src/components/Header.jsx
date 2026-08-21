@@ -64,20 +64,20 @@ export default function Header({
     <header className="app-header header-glass relative z-20 flex h-[64px] shrink-0 items-center justify-between border-b border-sky-500/15 px-6 select-none backdrop-blur-2xl">
       {/* Brand & Mode Label */}
       <div className="flex min-w-0 items-center gap-3.5">
-        <div className="brand-mark group relative grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full border border-sky-400/40 bg-gradient-to-br from-blue-600/35 via-sky-500/20 to-indigo-700/40 shadow-[0_0_30px_rgba(56,189,248,0.3)] transition duration-300 hover:scale-105 hover:border-sky-300/60 hover:shadow-[0_0_40px_rgba(56,189,248,0.5)]">
-          <span className="font-outfit text-base font-extrabold tracking-tight text-cyan-100 drop-shadow-[0_2px_10px_rgba(56,189,248,0.6)]">XR</span>
+        <div className="brand-mark group relative grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-2xl border border-sky-400/40 bg-gradient-to-br from-blue-600/40 via-sky-500/25 to-indigo-700/40 shadow-[0_0_30px_rgba(56,189,248,0.35)] transition duration-300 hover:scale-105 hover:border-sky-300/70 hover:shadow-[0_0_40px_rgba(56,189,248,0.55)]">
+          <span className="font-outfit text-lg font-extrabold tracking-tight text-cyan-100 drop-shadow-[0_2px_10px_rgba(56,189,248,0.7)]">XR</span>
           <span className="absolute inset-x-0 bottom-0 h-[2px] bg-gradient-to-r from-sky-400 via-blue-400 to-indigo-500 animate-pulse" />
         </div>
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-outfit truncate text-[17px] font-extrabold tracking-tight bg-gradient-to-r from-white via-sky-100 to-cyan-300 bg-clip-text text-transparent">
+          <div className="flex items-center gap-2.5">
+            <span className="font-outfit truncate text-lg font-extrabold tracking-tight bg-gradient-to-r from-white via-sky-100 to-cyan-300 bg-clip-text text-transparent">
               {t.app_title}
             </span>
-            <span className="hidden rounded-full border border-sky-400/30 bg-sky-500/15 px-2.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-sky-300 sm:inline shadow-[0_0_15px_rgba(56,189,248,0.2)]">
+            <span className="hidden rounded-full border border-sky-400/35 bg-sky-500/20 px-3 py-0.5 font-mono text-[10px] font-extrabold uppercase tracking-wider text-sky-200 sm:inline shadow-[0_0_15px_rgba(56,189,248,0.25)]">
               {isMeshy ? '☁️ Meshy Cloud v7' : '🖥️ MLX Apple Silicon'}
             </span>
           </div>
-          <p className="mt-0.5 truncate text-[10px] font-medium text-slate-400">
+          <p className="mt-0.5 truncate text-xs font-medium text-slate-300">
             {MODE_LABELS[mode]} · {isMeshy ? 'Cloud Engine · 5cr Smart Preview' : 'Producción privada local $0 en este Mac'}
           </p>
         </div>
@@ -95,28 +95,28 @@ export default function Header({
       </div>
 
       {/* Right Controls & Quick Actions */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2.5">
         {/* Command Palette Trigger */}
         <button
           onClick={() => {
             sounds.playClick();
             onOpenCommandPalette && onOpenCommandPalette();
           }}
-          className="flex items-center gap-1.5 rounded-full border border-sky-400/25 bg-[#020b1d]/85 px-3 py-1.5 text-xs text-slate-300 hover:border-sky-300/50 hover:text-white transition-all shadow-md"
+          className="flex items-center gap-2 rounded-full border border-sky-400/30 bg-[#020b1d]/90 px-3.5 py-1.5 text-xs font-semibold text-slate-200 hover:border-sky-300/60 hover:text-white transition-all shadow-md"
           title="Abrir Command Palette (⌘K)"
         >
-          <MagnifyingGlass size={14} className="text-cyan-300" />
-          <span className="hidden md:inline font-mono text-[10px] text-slate-400">{t.cmd_k_hint}</span>
+          <MagnifyingGlass size={15} className="text-cyan-300" />
+          <span className="hidden md:inline font-mono text-xs text-slate-300">{t.cmd_k_hint}</span>
         </button>
 
         {/* Engine Switcher Toggle Buttons */}
-        <div className="flex items-center rounded-full border border-sky-400/20 bg-[#020b1d]/85 p-1 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl">
+        <div className="flex items-center rounded-full border border-sky-400/25 bg-[#020b1d]/90 p-1 shadow-[0_8px_32px_rgba(0,0,0,0.5)] backdrop-blur-xl">
           <button
             onClick={() => {
               sounds.playClick();
               onSelectEngineProvider && onSelectEngineProvider('local');
             }}
-            className={`rounded-full px-3.5 py-1.5 text-[11px] font-extrabold transition-all duration-300 ${!isMeshy ? 'bg-gradient-to-r from-blue-600 via-blue-500 to-sky-500 text-white shadow-[0_0_22px_rgba(37,99,235,0.6)] border border-sky-300/50 scale-[1.03]' : 'text-slate-400 hover:text-slate-200 hover:scale-[1.02]'}`}
+            className={`rounded-full px-4 py-1.5 text-xs font-extrabold transition-all duration-300 ${!isMeshy ? 'bg-gradient-to-r from-blue-600 via-blue-500 to-sky-500 text-white shadow-[0_0_22px_rgba(37,99,235,0.6)] border border-sky-300/50 scale-[1.03]' : 'text-slate-400 hover:text-slate-200 hover:scale-[1.02]'}`}
             title={t.engine_local_title}
           >
             {t.engine_local}
@@ -126,7 +126,7 @@ export default function Header({
               sounds.playClick();
               onSelectEngineProvider && onSelectEngineProvider('meshy');
             }}
-            className={`rounded-full px-3.5 py-1.5 text-[11px] font-extrabold transition-all duration-300 ${isMeshy ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-sky-500 text-white shadow-[0_0_22px_rgba(37,99,235,0.6)] border border-sky-300/50 scale-[1.03]' : 'text-slate-400 hover:text-slate-200 hover:scale-[1.02]'}`}
+            className={`rounded-full px-4 py-1.5 text-xs font-extrabold transition-all duration-300 ${isMeshy ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-sky-500 text-white shadow-[0_0_22px_rgba(37,99,235,0.6)] border border-sky-300/50 scale-[1.03]' : 'text-slate-400 hover:text-slate-200 hover:scale-[1.02]'}`}
             title={t.engine_meshy_title}
           >
             {t.engine_meshy}

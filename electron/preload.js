@@ -36,6 +36,9 @@ contextBridge.exposeInMainWorld('ollama', {
   // -> Array<historyEntry>
   loadHistory: () => ipcRenderer.invoke('ollama:loadHistory'),
 
+  // Unload all running models from Ollama memory/VRAM
+  unloadModels: () => ipcRenderer.invoke('ollama:unloadModels'),
+
   // Persist the full history array.
   saveHistory: (history) => ipcRenderer.invoke('ollama:saveHistory', history),
 });

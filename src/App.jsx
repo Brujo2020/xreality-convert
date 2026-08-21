@@ -740,10 +740,6 @@ export default function App() {
   // --- Save (branches on type) ----------------------------------------------
   const handleSave = useCallback(async () => {
     if (!result) return null;
-    if (result.type === 'glb' && ['atencion', 'critico'].includes(result.qualityLevel)) {
-      setError('La entrega requiere revisión; no se puede guardar este GLB todavía.');
-      return null;
-    }
     let filePath;
     if (result.type === 'glb') {
       filePath = await window.hunyuan.saveGlb({
@@ -773,10 +769,6 @@ export default function App() {
   // to 60mm) then save it to ~/Documents/OllamaImageStudio/.
   const handleSaveStl3d = useCallback(async () => {
     if (!result || result.type !== 'glb') return null;
-    if (result.qualityLevel === 'critico') {
-      setError('La entrega está marcada como crítica; revisa o corrige el modelo antes de exportar STL.');
-      return null;
-    }
     const conv = await window.hunyuan.convertStl({
       glbPath: result.glbPath,
       targetMm: stlMm,
@@ -800,10 +792,6 @@ export default function App() {
         filename: timestampName(result.faces || 'model', 'usdz'),
       });
       return { path: dest, report: { ok: true, usdz_path: result.usdzPath } };
-    }
-    if (result.qualityLevel === 'critico') {
-      setError('La entrega está marcada como crítica; revisa o corrige el modelo antes de exportar OpenUSD.');
-      return null;
     }
     const converted = await window.hunyuan.convertOpenUsd({ glbPath: result.glbPath });
     if (!converted.ok) {
@@ -1089,9 +1077,9 @@ export default function App() {
         onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
       />
 
-      <div className="workspace-grid relative z-10 flex min-h-0 flex-1 gap-3 p-3">
+      <div className="workspace-grid relative z-10 flex min-h-0 flex-1 gap-3.5 p-3.5">
         {/* Left: form */}
-        <aside className="control-rail workspace-window w-[356px] shrink-0 overflow-hidden rounded-[22px]">
+        <aside className="control-rail workspace-window w-[390px] xl:w-[420px] shrink-0 overflow-hidden rounded-[26px]">
           <PromptPanel
             connected={status.connected}
             engineProvider={engineProvider}

@@ -289,6 +289,41 @@ ipcMain.handle('ollama:cancel', async () => {
   return { ok: false };
 });
 
+async function unloadAllOllamaModels() {
+  try {
+    const res = await ollamaRequest({
+      method: 'GET',
+      pathName: '/api/ps',
+      timeout: 3000,
+    });
+    if (res.statusCode === 200) {
+      const data = JSON.parse(res.body);
+      const running = Array.isArray(data.models) ? data.models : [];
+      for (const m of running) {
+        const modelName = m.name || m.model;
+        if (modelName) {
+          appendHunyuanLog(`[Ollama] Liberando VRAM/RAM del modelo: ${modelName}`);
+          try {
+            await ollamaRequest({
+              method: 'POST',
+              pathName: '/api/generate',
+              timeout: 5000,
+              body: { model: modelName, keep_alive: 0 },
+            });
+          } catch {}
+        }
+      }
+    }
+  } catch (err) {
+    // Ollama not reachable or no models loaded
+  }
+}
+
+ipcMain.handle('ollama:unloadModels', async () => {
+  await unloadAllOllamaModels();
+  return { ok: true };
+});
+
 // --- STL generation --------------------------------------------------------
 // A local LLM can't reliably emit raw STL (thousands of triangles), so we ask
 // it for parametric JSCAD code instead and build the mesh ourselves. This is
@@ -662,7 +697,7 @@ ipcMain.handle('ollama:saveHistory', async (_event, history) => {
 // --- Hunyuan3D (image -> 3D mesh) via local FastAPI server -----------------
 const HUNYUAN_PORT = 8765;
 const HUNYUAN_INSTALL_VERSION = '21';
-const HUNYUAN_SOURCE_REVISION = 'xreality-buffalo-mlx-openusd-watertight-v2';
+const HUNYUAN_SOURCE_REVISION = 'xreality-buffalo-mlx-openusd-watertight-v3-memfix';
 
 function hunyuanRequest({ method, pathName, body, timeout }) {
   return new Promise((resolve, reject) => {
@@ -1219,9 +1254,17 @@ ipcMain.handle('hunyuan:generate3D', async (event, params) => {
   hunyuanCancelled = false;
   try {
     event.sender.send('hunyuan:progress', {
-      stage: 'Verificando motor local',
+      stage: 'Liberando memoria del sistema y Ollama…',
       progress: 1,
       percent: 1,
+      remaining: null,
+      status: 'starting',
+    });
+    await unloadAllOllamaModels();
+    event.sender.send('hunyuan:progress', {
+      stage: 'Verificando motor local',
+      progress: 2,
+      percent: 2,
       remaining: null,
       status: 'starting',
     });
@@ -1485,12 +1528,29 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
+      backgroundThrottling: false,
     },
   });
 
   mainWindow = win;
   win.on('closed', () => {
     mainWindow = null;
+  });
+
+  win.webContents.on('render-process-gone', (_event, details) => {
+    appendHunyuanLog(`[Electron] Renderer crash: reason=${details.reason} exitCode=${details.exitCode}`);
+    console.error('[Electron] Render process gone:', details);
+    if (!win.isDestroyed() && details.reason !== 'clean-exit') {
+      dialog.showErrorBox(
+        'Reinicio de interfaz por presión de memoria',
+        `La ventana gráfica se detuvo (${details.reason}). Se recargará para recuperar el control.`
+      );
+      win.reload();
+    }
+  });
+
+  win.on('unresponsive', () => {
+    appendHunyuanLog('[Electron] Ventana no responde temporalmente (alta carga)');
   });
 
   if (isDev) {
@@ -1503,6 +1563,9 @@ function createWindow() {
 app.whenReady().then(() => {
   ensureDir(APP_SUPPORT_DIR);
   getEngineToken();
+  try {
+    app.commandLine.appendSwitch('js-flags', '--max-old-space-size=4096');
+  } catch {}
   if (process.platform === 'darwin' && app.dock?.setIcon) {
     const dockIcon = path.join(__dirname, '..', 'build', 'icon.png');
     if (fs.existsSync(dockIcon)) {

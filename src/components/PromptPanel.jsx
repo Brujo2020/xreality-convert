@@ -43,20 +43,20 @@ import { sounds } from '../lib/soundEffects.js';
 function Slider({ label, value, min, max, step, onChange, suffix = '' }) {
   return (
     <label className="block">
-      <span className="mb-2 flex items-center justify-between text-[11px] text-slate-400">
+      <span className="mb-2 flex items-center justify-between text-xs font-semibold text-slate-300">
         {label}
-        <b className="rounded-md border border-sky-400/15 bg-sky-400/5 px-2 py-0.5 font-mono font-medium text-sky-100">
+        <b className="rounded-lg border border-sky-400/25 bg-sky-400/10 px-2.5 py-1 font-mono text-xs font-bold text-sky-200 shadow-sm">
           {value}{suffix}
         </b>
       </span>
-      <input type="range" className="slider-accent w-full" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} />
+      <input type="range" className="slider-accent w-full h-2 rounded-lg cursor-pointer" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} />
     </label>
   );
 }
 
 const MODES = [
-  { id: 'image', step: '01', label: 'Crear imagen', hint: 'Referencia visual', Icon: ImageIcon },
-  { id: 'stl', step: '02', label: 'Texto → 3D', hint: 'Geometría técnica', Icon: Polygon },
+  { id: 'image', step: '01', label: 'Crear Imagen', hint: 'Referencia visual FLUX', Icon: ImageIcon },
+  { id: 'stl', step: '02', label: 'Texto → 3D STL', hint: 'Geometría CAD técnica', Icon: Polygon },
   { id: 'image3d', step: '03', label: 'Imagen → 3D', hint: 'Reconstrucción MLX', Icon: CubeFocus },
 ];
 
@@ -114,7 +114,7 @@ const STL_CAD_TEMPLATES = [
 // High-fidelity prompt enhancers for Image Mode
 const IMAGE_PROMPT_ENHANCERS = [
   {
-    name: '🌟 3D Asset Studio',
+    name: '🌟 3D Studio',
     suffix: ', clean isometric 3D asset, studio lighting, smooth bevels, white background, high geometric fidelity, octane render 8k',
   },
   {
@@ -133,7 +133,7 @@ const IMAGE_PROMPT_ENHANCERS = [
 
 function ModeSelector({ mode, setMode, disabled }) {
   return (
-    <nav className="grid grid-cols-3 gap-1.5 rounded-full border border-sky-400/20 bg-[#020b1d]/80 p-1.5 shadow-inner backdrop-blur-xl">
+    <nav className="grid grid-cols-3 gap-2 rounded-2xl border border-sky-400/25 bg-[#020b1d]/90 p-1.5 shadow-xl backdrop-blur-2xl">
       {MODES.map((item) => (
         <button
           key={item.id}
@@ -142,17 +142,17 @@ function ModeSelector({ mode, setMode, disabled }) {
             sounds.playSwitch();
             setMode(item.id);
           }}
-          className={`group relative overflow-hidden rounded-full px-3 py-2.5 text-center transition-all duration-300 ${
+          className={`group relative overflow-hidden rounded-xl px-3 py-3 text-center transition-all duration-300 ${
             mode === item.id
-              ? 'bg-gradient-to-r from-blue-600 via-blue-500 to-sky-500 text-white shadow-[0_8px_30px_rgba(37,99,235,0.5)] border border-sky-300/40 scale-[1.03]'
-              : 'text-slate-400 hover:bg-white/5 hover:text-slate-100'
+              ? 'bg-gradient-to-r from-blue-600 via-blue-500 to-sky-500 text-white shadow-[0_8px_30px_rgba(37,99,235,0.55)] border border-sky-300/50 scale-[1.03]'
+              : 'text-slate-400 hover:bg-white/10 hover:text-slate-100'
           }`}
         >
           <span className="flex items-center justify-center gap-1.5">
-            <span className={`font-mono text-[9px] font-bold ${mode === item.id ? 'text-white/80' : 'text-sky-400/70'}`}>{item.step}</span>
-            <item.Icon size={16} weight="duotone" className={mode === item.id ? 'text-white' : 'text-sky-400/70'} aria-hidden="true" />
+            <span className={`font-mono text-[10px] font-bold ${mode === item.id ? 'text-white/90' : 'text-sky-400/80'}`}>{item.step}</span>
+            <item.Icon size={18} weight="duotone" className={mode === item.id ? 'text-white' : 'text-sky-400'} aria-hidden="true" />
           </span>
-          <span className="mt-0.5 block text-[11px] font-bold leading-tight">{item.label}</span>
+          <span className="mt-1 block text-xs font-bold leading-tight">{item.label}</span>
         </button>
       ))}
     </nav>
@@ -161,10 +161,10 @@ function ModeSelector({ mode, setMode, disabled }) {
 
 function Section({ eyebrow, title, children }) {
   return (
-    <section className="glass-card rounded-3xl p-4.5 border border-sky-500/20 bg-[#06173a]/75 backdrop-blur-2xl">
-      <div className="mb-3">
-        <p className="font-mono text-[9px] uppercase tracking-[0.2em] font-extrabold text-sky-400">{eyebrow}</p>
-        <h2 className="mt-1 text-sm font-bold tracking-tight text-slate-100 font-outfit">{title}</h2>
+    <section className="glass-card rounded-3xl p-5 border border-sky-400/25 bg-[#06173a]/85 backdrop-blur-2xl shadow-xl">
+      <div className="mb-3.5">
+        <p className="font-mono text-xs uppercase tracking-[0.2em] font-extrabold text-cyan-300">{eyebrow}</p>
+        <h2 className="mt-1 text-base font-bold tracking-tight text-white font-outfit">{title}</h2>
       </div>
       {children}
     </section>
@@ -175,7 +175,7 @@ function CategorySelector({ value, onChange, disabled }) {
   const selected = MODEL_CATEGORIES[value] || MODEL_CATEGORIES.industrial;
   return (
     <Section eyebrow="Contexto del modelo" title="¿Qué aparece en la imagen?">
-      <div className="grid grid-cols-3 gap-1.5">
+      <div className="grid grid-cols-3 gap-2">
         {Object.entries(MODEL_CATEGORIES).map(([id, item]) => (
           <button
             key={id}
@@ -184,20 +184,20 @@ function CategorySelector({ value, onChange, disabled }) {
               sounds.playClick();
               onChange(id);
             }}
-            className={`rounded-2xl border px-2 py-2.5 text-center transition-all duration-300 ${
+            className={`rounded-2xl border px-2.5 py-3 text-center transition-all duration-300 ${
               value === id
-                ? 'border-sky-400/50 bg-sky-500/20 text-white shadow-[0_8px_25px_rgba(56,189,248,0.25)] scale-[1.03]'
-                : 'border-white/5 bg-black/20 text-slate-400 hover:border-sky-400/30 hover:text-slate-100'
+                ? 'border-sky-400/60 bg-sky-500/25 text-white shadow-[0_8px_25px_rgba(56,189,248,0.3)] scale-[1.03]'
+                : 'border-white/10 bg-black/30 text-slate-300 hover:border-sky-400/40 hover:text-white'
             }`}
           >
-            {React.createElement(CATEGORY_ICONS[id] || Cube, { size: 20, weight: 'duotone', className: 'mx-auto text-sky-300', 'aria-hidden': true })}
-            <span className="mt-1 block text-[9px] font-bold">{item.label}</span>
+            {React.createElement(CATEGORY_ICONS[id] || Cube, { size: 24, weight: 'duotone', className: 'mx-auto text-cyan-300', 'aria-hidden': true })}
+            <span className="mt-1.5 block text-[11px] font-bold">{item.label}</span>
           </button>
         ))}
       </div>
-      <div className="mt-2.5 rounded-2xl border border-sky-400/20 bg-sky-500/10 p-3">
-        <p className="text-[10px] leading-relaxed text-slate-200">{selected.description}</p>
-        <div className="mt-2 flex flex-wrap gap-1.5 font-mono text-[7px] font-bold uppercase tracking-wider text-sky-300">
+      <div className="mt-3.5 rounded-2xl border border-sky-400/25 bg-sky-500/15 p-3.5">
+        <p className="text-xs leading-relaxed text-slate-100 font-medium">{selected.description}</p>
+        <div className="mt-2.5 flex flex-wrap gap-2 font-mono text-[10px] font-bold uppercase tracking-wider text-cyan-200">
           <span>{selected.steps} pasos</span><span>·</span><span>{selected.octree}px</span><span>·</span><span>{Math.round(selected.targetFaces / 1000)}K caras</span><span>·</span><span>{selected.backgroundMode === 'keep' ? 'Escena completa' : 'Fondo automático'}</span>
         </div>
       </div>
@@ -550,12 +550,12 @@ export default function PromptPanel({
         ) : (
           <>
             {/* Quick Templates Bar */}
-            <div className="mb-2">
-              <span className="flex items-center gap-1 font-mono text-[8px] font-extrabold uppercase tracking-wider text-cyan-300 mb-1.5">
-                <MagicWand size={12} weight="duotone" />
+            <div className="mb-3">
+              <span className="flex items-center gap-1.5 font-mono text-xs font-extrabold uppercase tracking-wider text-cyan-300 mb-2">
+                <MagicWand size={15} weight="duotone" />
                 {mode === 'stl' ? 'Plantillas CAD Rápidas' : 'Optimizadores de Prompt'}
               </span>
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-2">
                 {mode === 'stl'
                   ? STL_CAD_TEMPLATES.map((tmpl) => (
                       <button
@@ -566,7 +566,7 @@ export default function PromptPanel({
                           sounds.playClick();
                           setPrompt(tmpl.prompt);
                         }}
-                        className="rounded-full border border-sky-400/30 bg-sky-500/10 px-2.5 py-1 text-[9px] font-bold text-sky-200 hover:bg-sky-500/25 transition-all"
+                        className="rounded-full border border-sky-400/40 bg-sky-500/15 px-3.5 py-1.5 text-xs font-bold text-sky-100 hover:bg-sky-500/30 hover:scale-[1.03] transition-all shadow-sm"
                       >
                         {tmpl.name}
                       </button>
@@ -580,7 +580,7 @@ export default function PromptPanel({
                           sounds.playClick();
                           setPrompt((prev) => (prev.includes(enh.suffix) ? prev : `${prev.trim()}${enh.suffix}`));
                         }}
-                        className="rounded-full border border-sky-400/30 bg-sky-500/10 px-2.5 py-1 text-[9px] font-bold text-sky-200 hover:bg-sky-500/25 transition-all"
+                        className="rounded-full border border-sky-400/40 bg-sky-500/15 px-3.5 py-1.5 text-xs font-bold text-sky-100 hover:bg-sky-500/30 hover:scale-[1.03] transition-all shadow-sm"
                       >
                         + {enh.name}
                       </button>
@@ -588,14 +588,24 @@ export default function PromptPanel({
               </div>
             </div>
 
-            <textarea
-              value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
-              rows={4}
-              disabled={processing}
-              placeholder={mode === 'stl' ? 'Describe una pieza, mecanismo o carcasa técnica en mm…' : 'Describe una referencia limpia, centrada y lista para convertir a 3D…'}
-              className="field-modern scroll-dark resize-none leading-relaxed"
-            />
+            <div className="tui-prompt-hero p-3">
+              <textarea
+                value={prompt}
+                onChange={(event) => setPrompt(event.target.value)}
+                rows={4}
+                disabled={processing}
+                placeholder={mode === 'stl' ? 'Describe una pieza, mecanismo o carcasa técnica con dimensiones en mm…' : 'Describe una referencia limpia, centrada y lista para convertir a 3D…'}
+                className="w-full bg-transparent font-sans text-sm sm:text-base leading-relaxed text-white placeholder-slate-500 focus:outline-none resize-none scroll-dark"
+              />
+              <div className="flex items-center justify-between pt-2 border-t border-white/10 font-mono text-[11px] text-slate-400">
+                <span className="flex items-center gap-1">
+                  <span className={`h-2 w-2 rounded-full ${prompt.trim().length > 30 ? 'bg-emerald-400' : prompt.trim().length > 0 ? 'bg-amber-400' : 'bg-slate-600'}`} />
+                  {prompt.trim().length > 30 ? 'Prompt Óptimo' : prompt.trim().length > 0 ? 'Prompt Básico' : 'Esperando texto'}
+                </span>
+                <span>{prompt.length} caracteres</span>
+              </div>
+            </div>
+
             <TextureLibraryPicker
               disabled={processing}
               onSelectTexture={(suffix) => {
@@ -608,10 +618,10 @@ export default function PromptPanel({
 
         {/* Multi-view and Diagnosis in 3D Mode */}
         {mode === 'image3d' && (
-          <div className="mt-3 rounded-2xl border border-sky-400/20 bg-sky-500/10 p-3">
-            <p className="font-mono text-[8px] uppercase tracking-[0.2em] font-bold text-sky-300">Vistas para Shape multi-vista</p>
-            <p className="mt-1 text-[9px] leading-relaxed text-slate-300">Añade fotos reales y etiquetadas para maximizar la fidelidad 360°.</p>
-            <div className="mt-2.5 grid grid-cols-3 gap-1.5">
+          <div className="mt-4 rounded-2xl border border-sky-400/25 bg-sky-500/15 p-4">
+            <p className="font-mono text-xs uppercase tracking-[0.2em] font-bold text-cyan-200">Vistas para Shape Multi-Vista</p>
+            <p className="mt-1 text-xs leading-relaxed text-slate-200">Añade fotos reales etiquetadas para maximizar la fidelidad geométrica 360°.</p>
+            <div className="mt-3 grid grid-cols-3 gap-2">
               {['front', 'right', 'back', 'left', 'top', 'bottom'].map((viewId) => (
                 <button
                   key={viewId}
@@ -621,8 +631,8 @@ export default function PromptPanel({
                     sounds.playClick();
                     onPickMultiView?.(viewId);
                   }}
-                  className={`rounded-full border px-2.5 py-1.5 text-center font-mono text-[8px] font-bold uppercase transition-all ${
-                    multiViewInputs[viewId] ? 'border-emerald-400/40 bg-emerald-500/20 text-emerald-200' : 'border-white/10 bg-black/20 text-slate-400 hover:border-sky-400/30 hover:text-white'
+                  className={`rounded-xl border px-3 py-2 text-center font-mono text-xs font-bold uppercase transition-all ${
+                    multiViewInputs[viewId] ? 'border-emerald-400/50 bg-emerald-500/25 text-emerald-100 shadow-sm scale-[1.02]' : 'border-white/15 bg-black/30 text-slate-300 hover:border-sky-400/40 hover:text-white'
                   }`}
                 >
                   {multiViewInputs[viewId] ? `✓ ${viewId}` : `+ ${viewId}`}

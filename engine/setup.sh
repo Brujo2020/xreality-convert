@@ -9,7 +9,7 @@ AGENTIC_RASTERIZER="$AGENTIC_SOURCE/hy3dpaint/custom_rasterizer"
 MARKER="$ENGINE_DIR/.installed"
 LOCKFILE="$ENGINE_DIR/requirements-macos.lock"
 INSTALL_VERSION="21"
-SOURCE_REVISION="xreality-buffalo-mlx-openusd-watertight-v2"
+SOURCE_REVISION="xreality-buffalo-mlx-openusd-watertight-v3-memfix"
 SOURCE_MARKER="$ENGINE_DIR/.source-version"
 # The installer creates a Python environment and compiled rasterizer before
 # model weights are fetched on first use. Reserve enough room for that local
