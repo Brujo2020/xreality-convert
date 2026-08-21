@@ -9,6 +9,7 @@ import { XR_PROFILES } from './lib/xrProfiles.js';
 import { USE_CASES } from './lib/useCases.js';
 import { MODEL_CATEGORIES } from './lib/modelCategories.js';
 import { sounds } from './lib/soundEffects.js';
+import { estimateImage3dDelivery } from './lib/deliveryEstimates.js';
 
 const IMAGE_MODEL = 'x/z-image-turbo:latest';
 const PREFERRED_IMAGE_MODELS = ['x/flux2-klein:latest', 'x/flux2-klein', IMAGE_MODEL];
