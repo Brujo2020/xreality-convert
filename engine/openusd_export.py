@@ -395,3 +395,314 @@ def convert_glb_to_usdz(glb_path, output_dir):
         "validation": validation_output or "Success!",
         **metrics,
     }
+
+
+def write_usda_with_parts(glb_path, parts_manifest, usda_path, texture_dir):
+    """Write a hierarchical, part-aware OpenUSD stage."""
+    import trimesh
+
+    source = Path(glb_path)
+    texture_dir = Path(texture_dir)
+    texture_dir.mkdir(parents=True, exist_ok=True)
+
+    lines = [
+        "#usda 1.0",
+        "(",
+        '    defaultPrim = "XrealityAsset"',
+        "    metersPerUnit = 1",
+        '    upAxis = "Y"',
+        ")",
+        "",
+        'def Xform "XrealityAsset" (',
+        '    kind = "component"',
+        ")",
+        "{",
+        f'    custom string xreality:exporter = "{EXPORTER_VERSION}-production"',
+        f'    custom string xreality:sourceSha256 = "{_sha256(source)}"',
+        '    custom string xreality:materialx_ready = "true"',
+        "",
+        '    def Scope "Looks"',
+        "    {",
+    ]
+
+    geometry_lines = []
+    geometry_lines.append('    def Xform "Geometry"')
+    geometry_lines.append('    {')
+
+    texture_count = 0
+    face_total = 0
+    vertex_total = 0
+
+    for part_idx, part in enumerate(parts_manifest):
+        part_label = part.get("label", f"part_{part_idx}")
+        part_glb = Path(part.get("glb_path"))
+
+        scene = trimesh.load(str(part_glb), force="scene", process=False)
+        part_meshes = []
+        if isinstance(scene, trimesh.Scene) and scene.geometry:
+            for node_name in scene.graph.nodes_geometry:
+                transform, geometry_name = scene.graph.get(node_name)
+                geometry = scene.geometry.get(geometry_name)
+                if geometry is not None and hasattr(geometry, "faces") and len(geometry.faces) > 0:
+                    mesh = geometry.copy()
+                    mesh.apply_transform(transform)
+                    part_meshes.append(mesh)
+
+        if not part_meshes:
+            continue
+
+        if len(part_meshes) > 1:
+            mesh = trimesh.util.concatenate(part_meshes)
+        else:
+            mesh = part_meshes[0]
+
+        material_name = f"Material_{part_label}"
+        material = getattr(getattr(mesh, "visual", None), "material", None)
+        if material is None:
+            material = trimesh.visual.material.PBRMaterial(
+                baseColorFactor=(204, 204, 204, 255), metallicFactor=0.0, roughnessFactor=0.6
+            )
+
+        material_lines, paths = _material_block(
+            material, material_name, texture_dir, part_idx
+        )
+        lines.extend(material_lines)
+        texture_count += len(paths)
+
+        part_xform = f'Part_{part_label}'
+        mesh_name = f'Mesh_{part_label}'
+
+        vertices = np.asarray(mesh.vertices, dtype=float)
+        faces = np.asarray(mesh.faces, dtype=int)
+        normals = np.asarray(mesh.vertex_normals, dtype=float)
+
+        face_total += len(faces)
+        vertex_total += len(vertices)
+
+        geometry_lines.extend([
+            f'        def Xform "{part_xform}"',
+            "        {",
+            f'            def Mesh "{mesh_name}" (',
+            '                prepend apiSchemas = ["MaterialBindingAPI"]',
+            "            )",
+            "            {",
+            f"                int[] faceVertexCounts = [{', '.join('3' for _ in faces)}]",
+            f"                int[] faceVertexIndices = {_array(faces)}",
+            f"                point3f[] points = {_array(vertices, 3)}",
+            f"                normal3f[] normals = {_array(normals, 3)} (",
+            '                    interpolation = "vertex"',
+            "                )",
+            f"                rel material:binding = </XrealityAsset/Looks/{material_name}>",
+            '                uniform token subdivisionScheme = "none"',
+        ])
+
+        uv = getattr(getattr(mesh, "visual", None), "uv", None)
+        if uv is not None and len(uv) == len(vertices):
+            uv = np.asarray(uv, dtype=float).copy()
+            uv[:, 1] = 1.0 - uv[:, 1]
+            geometry_lines.extend(
+                [
+                    f"                texCoord2f[] primvars:st = {_array(uv, 2)} (",
+                    '                    interpolation = "vertex"',
+                    "                )",
+                ]
+            )
+
+        geometry_lines.extend(["            }", "        }"])
+
+    lines.extend(["    }", ""])
+    lines.extend(geometry_lines)
+    lines.extend(["    }", "}"])
+
+    Path(usda_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return {
+        "meshes": len(parts_manifest),
+        "vertices": vertex_total,
+        "faces": face_total,
+        "materials": len(parts_manifest),
+        "textures": texture_count,
+        "parts_count": len(parts_manifest),
+    }
+
+
+def write_usda_with_lods(glb_path, lods, usda_path, texture_dir):
+    """Write an OpenUSD stage with LOD variant sets."""
+    import trimesh
+
+    source = Path(glb_path)
+    texture_dir = Path(texture_dir)
+    texture_dir.mkdir(parents=True, exist_ok=True)
+
+    lines = [
+        "#usda 1.0",
+        "(",
+        '    defaultPrim = "XrealityAsset"',
+        "    metersPerUnit = 1",
+        '    upAxis = "Y"',
+        ")",
+        "",
+        'def Xform "XrealityAsset" (',
+        '    kind = "component"',
+        '    variants = {',
+        '        string LOD = "LOD0"',
+        '    }',
+        '    prepend variantSets = "LOD"',
+        ")",
+        "{",
+        f'    custom string xreality:exporter = "{EXPORTER_VERSION}-production"',
+        f'    custom string xreality:sourceSha256 = "{_sha256(source)}"',
+        '    custom string xreality:materialx_ready = "true"',
+        "",
+        '    def Scope "Looks"',
+        "    {",
+    ]
+
+    texture_count = 0
+    face_total = 0
+    vertex_total = 0
+
+    variant_lines = []
+    variant_lines.append('    variantSet "LOD" = {')
+
+    for lod_idx, lod_path in enumerate(lods):
+        lod_name = f"LOD{lod_idx}"
+        scene = trimesh.load(str(lod_path), force="scene", process=False)
+        lod_meshes = []
+        if isinstance(scene, trimesh.Scene) and scene.geometry:
+            for node_name in scene.graph.nodes_geometry:
+                transform, geometry_name = scene.graph.get(node_name)
+                geometry = scene.geometry.get(geometry_name)
+                if geometry is not None and hasattr(geometry, "faces") and len(geometry.faces) > 0:
+                    mesh = geometry.copy()
+                    mesh.apply_transform(transform)
+                    lod_meshes.append(mesh)
+
+        if not lod_meshes:
+            continue
+
+        if len(lod_meshes) > 1:
+            mesh = trimesh.util.concatenate(lod_meshes)
+        else:
+            mesh = lod_meshes[0]
+
+        material_name = f"Material_{lod_name}"
+        material = getattr(getattr(mesh, "visual", None), "material", None)
+        if material is None:
+            material = trimesh.visual.material.PBRMaterial(
+                baseColorFactor=(204, 204, 204, 255), metallicFactor=0.0, roughnessFactor=0.6
+            )
+
+        material_lines, paths = _material_block(
+            material, material_name, texture_dir, lod_idx + 100
+        )
+        lines.extend(material_lines)
+        texture_count += len(paths)
+
+        vertices = np.asarray(mesh.vertices, dtype=float)
+        faces = np.asarray(mesh.faces, dtype=int)
+        normals = np.asarray(mesh.vertex_normals, dtype=float)
+
+        face_total += len(faces)
+        vertex_total += len(vertices)
+
+        variant_lines.extend([
+            f'        "{lod_name}" {{',
+            f'            def Mesh "Geometry_{lod_name}" (',
+            '                prepend apiSchemas = ["MaterialBindingAPI"]',
+            "            )",
+            "            {",
+            f"                int[] faceVertexCounts = [{', '.join('3' for _ in faces)}]",
+            f"                int[] faceVertexIndices = {_array(faces)}",
+            f"                point3f[] points = {_array(vertices, 3)}",
+            f"                normal3f[] normals = {_array(normals, 3)} (",
+            '                    interpolation = "vertex"',
+            "                )",
+            f"                rel material:binding = </XrealityAsset/Looks/{material_name}>",
+            '                uniform token subdivisionScheme = "none"',
+        ])
+
+        uv = getattr(getattr(mesh, "visual", None), "uv", None)
+        if uv is not None and len(uv) == len(vertices):
+            uv = np.asarray(uv, dtype=float).copy()
+            uv[:, 1] = 1.0 - uv[:, 1]
+            variant_lines.extend(
+                [
+                    f"                texCoord2f[] primvars:st = {_array(uv, 2)} (",
+                    '                    interpolation = "vertex"',
+                    "                )",
+                ]
+            )
+
+        variant_lines.extend(["            }", "        }"])
+
+    variant_lines.append('    }')
+
+    lines.extend(["    }", ""])
+    lines.extend(variant_lines)
+    lines.append("}")
+
+    Path(usda_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return {
+        "meshes": len(lods),
+        "vertices": vertex_total,
+        "faces": face_total,
+        "materials": len(lods),
+        "textures": texture_count,
+        "lod_variants": [f"LOD{i}" for i in range(len(lods))],
+    }
+
+
+def convert_glb_to_usd_production(glb_path, output_dir, parts=None, lods=None):
+    """Full production export: USDA + textures + USDZ packaging with Parts or LODs."""
+    source = Path(glb_path).resolve()
+    if not source.is_file() or source.suffix.lower() != ".glb":
+        raise RuntimeError("Selecciona un archivo GLB válido.")
+    
+    output_dir = Path(output_dir).resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    usdzip = _tool(_USDZIP_CANDIDATES, "usdzip")
+    output = output_dir / f"{source.stem}-production.usdz"
+    output.unlink(missing_ok=True)
+
+    with tempfile.TemporaryDirectory(prefix="xreality-openusd-prod-", dir=output_dir) as work_raw:
+        work = Path(work_raw)
+        root = work / "XrealityAsset.usda"
+        texture_dir = work / "textures"
+        
+        metrics = {}
+        parts_count = 0
+        lod_variants = []
+        features = ["MaterialBindingAPI", "UsdPreviewSurface"]
+
+        if lods:
+            metrics = write_usda_with_lods(source, lods, root, texture_dir)
+            lod_variants = metrics.get("lod_variants", [])
+            features.append("VariantSets")
+        elif parts:
+            metrics = write_usda_with_parts(source, parts, root, texture_dir)
+            parts_count = metrics.get("parts_count", 0)
+            features.append("PartHierarchy")
+        else:
+            metrics = write_usda(source, root, texture_dir)
+
+        package = subprocess.run(
+            [usdzip, str(output), "--arkitAsset", str(root)],
+            cwd=work,
+            capture_output=True,
+            text=True,
+        )
+        
+        if package.returncode != 0 or not output.is_file():
+            output.unlink(missing_ok=True)
+            raise RuntimeError(f"No se pudo crear el paquete OpenUSD de producción: {package.stderr}")
+
+    return {
+        "ok": True,
+        "format": "usdz",
+        "usdz_path": str(output),
+        "parts_count": parts_count,
+        "lod_variants": lod_variants,
+        "materialx_compatible": True,
+        "realitykit_features": features,
+        **metrics,
+    }
