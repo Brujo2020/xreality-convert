@@ -1268,18 +1268,6 @@ async function startHunyuanServerOnce() {
       if (Date.now() - startedAt >= 30000) hunyuanRestartAttempts = 0;
       if (!hunyuanShutdownRequested) scheduleHunyuanRestart();
     });
-    proc.on('exit', (code) => {
-      if (hunyuanServerProc === proc) hunyuanServerProc = null;
-      if (!hunyuanStopping && code !== 0) {
-        hunyuanLastError = stderrTail.trim() || `El servidor 3D terminó con código ${code}.`;
-      }
-      if (hunyuanStopping || hunyuanRestartAttempts >= HUNYUAN_MAX_RESTARTS) return;
-      hunyuanRestartAttempts += 1;
-      const delay = nextRestartDelayMs(hunyuanRestartAttempts);
-      setTimeout(() => {
-        if (!hunyuanStopping) startHunyuanServer();
-      }, delay).unref?.();
-    });
     return true;
   } catch (err) {
     hunyuanLastError = err.message;
@@ -1831,11 +1819,11 @@ function createWindow() {
   }
 }
 
-if (gotSingleInstanceLock) {
 app.on('second-instance', () => {
   const [win] = BrowserWindow.getAllWindows();
   if (!win) return;
   if (win.isMinimized()) win.restore();
+  win.show();
   win.focus();
 });
 
@@ -1861,15 +1849,6 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
-});
-}
-
-app.on('second-instance', () => {
-  const [win] = BrowserWindow.getAllWindows();
-  if (!win) return;
-  if (win.isMinimized()) win.restore();
-  win.show();
-  win.focus();
 });
 
 // Shut the 3D server down with the app (only if we started it).
